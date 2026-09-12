@@ -159,6 +159,19 @@ textarea[readonly] { background: var(--brand-soft); color: var(--ink); }
   border-radius: 99px; padding: 2px 10px; max-width: 200px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+
+/* ─── چیپ‌های انتخاب ورکر ─── */
+.pick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.pick:empty { display: none; }
+.pickbtn {
+  font-family: inherit; font-size: 12.5px; direction: ltr;
+  background: var(--bg); color: var(--ink); border: 1.5px solid var(--line);
+  border-radius: 99px; padding: 5px 12px; cursor: pointer;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pickbtn:active { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
+@media (hover: hover) { .pickbtn:hover { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); } }
+.pick-empty { font-size: 12.5px; color: var(--muted); }
 .check { display: flex; gap: 8px; align-items: center; font-size: 13.5px; margin: 8px 0; cursor: pointer; }
 .check input { width: auto; }
 

@@ -81,7 +81,11 @@ npm run dev        # http://localhost:3000
 
 (روی Vercel هم تنظیم خاصی نمی‌خواهد — فایل `worker.js` با `outputFileTracingIncludes` همراه توابع سروری بسته‌بندی می‌شود.)
 
-**API Token لازم:** داشبورد Cloudflare → My Profile → API Tokens → Create Token — دسترسی‌ها:
+**API Token لازم:** با این لینک، صفحه‌ی ساخت توکن با دسترسی‌های دقیق همین پنل برایت باز می‌شود — فقط «Create Token» را بزن:
+
+🔗 [ساخت سریع توکن Workers + D1](https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22d1%22%2C%22type%22%3A%22edit%22%7D%5D&accountId=*&zoneId=all&name=Workers-D1-Token-byW6W)
+
+یا دستی: داشبورد Cloudflare → My Profile → API Tokens → Create Token — دسترسی‌ها:
 
 ```
 Account · Workers Scripts · Edit

@@ -8,11 +8,11 @@
 /* ─── کد پل (یک ورکر کوچک که فقط درخواست را به کلادفلر رد می‌کند) ─── */
 const BRIDGE_CODE = [
   '/**',
-  ' * CF Bridge — پل مرورگر به Cloudflare API',
-  ' * فقط درخواست‌های مسیر /cf/... را به api.cloudflare.com/client/v4 رد می‌کند.',
-  ' * باز کردن آدرس پل در مرورگر → برگشت خودکار به پنل با پل آماده.',
-  ' * هیچ داده‌ای ذخیره یا لاگ نمی‌شود. اختیاری: Secret با نام BRIDGE_KEY بسازی،',
-  ' * آنگاه هر درخواست باید هدر X-Bridge-Key با همان مقدار بفرستد.',
+  ' * CF Bridge - browser relay to the Cloudflare API',
+  ' * Forwards /cf/... requests to api.cloudflare.com/client/v4.',
+  ' * Opening the bridge URL in a browser redirects back to the panel with ?bridge=...',
+  ' * Stores nothing, logs nothing. Optional: create a secret named BRIDGE_KEY,',
+  ' * then every request must send header X-Bridge-Key with the same value.',
   ' */',
   'const PANEL = "https://alireza123456w6w.github.io/simple_cloudfire_worker_changer/";',
   'const CORS_HEADERS = {',
@@ -399,26 +399,48 @@ const Bridge = {
     const t = ($("bToken").value || "").trim();
     const a = ($("bAccount").value || "").trim();
     if (!t || !a) {
-      $("bCmd").value = "اول توکن و Account ID را در بالا وارد کن تا دستور آماده شود.";
+      $("bCmd").value = "Enter the API token and Account ID above to generate the command.";
       return;
     }
-    const base = "https://api.cloudflare.com/client/v4/accounts/" + a + "/workers/scripts";
+    const scriptsBase = "https://api.cloudflare.com/client/v4/accounts/" + a + "/workers/scripts";
+    const workersBase = "https://api.cloudflare.com/client/v4/accounts/" + a + "/workers";
     const cmd = [
-      'curl -s -X PUT "' + base + '/cf-bridge" \\',
-      '  -H "Authorization: Bearer ' + t + '" \\',
+      "# CF Bridge installer - paste this WHOLE script into Termux / PC terminal and press Enter",
+      'TOKEN="' + t + '"',
+      'API="' + scriptsBase + '"',
+      "",
+      "# 1) Upload the bridge worker",
+      'curl -s -X PUT "$API/cf-bridge" \\',
+      '  -H "Authorization: Bearer $TOKEN" \\',
       "  -F 'metadata={\"main_module\":\"bridge.js\",\"compatibility_date\":\"" + DEFAULT_COMPAT + "\"};type=application/json' \\",
       "  -F 'bridge.js=@-;filename=bridge.js;type=application/javascript+module' <<'CFBRIDGE_EOF_7'",
       BRIDGE_CODE.replace(/\n+$/, ""),
       "CFBRIDGE_EOF_7",
-      "",
-      'curl -s -X POST "' + base + '/cf-bridge/subdomain" \\',
-      '  -H "Authorization: Bearer ' + t + '" \\',
-      "  -H \"Content-Type: application/json\" -d '{\"enabled\":true,\"previews_enabled\":false}' > /dev/null",
-      "",
-      'echo "پاسخ subdomain (برای اطمینان):"',
-      'curl -s "' + base.replace("/workers/scripts", "/workers") + '/subdomain" -H "Authorization: Bearer ' + t + '"',
       'echo ""',
-      'echo "آدرس پل: https://cf-bridge.$(curl -s "' + base.replace("/workers/scripts", "/workers") + '/subdomain" -H "Authorization: Bearer ' + t + '" | grep -o \'"subdomain":"[^"]*"\' | cut -d\'"\' -f4).workers.dev"',
+      "",
+      "# 2) Enable the workers.dev subdomain for the bridge",
+      'curl -s -X POST "$API/cf-bridge/subdomain" \\',
+      '  -H "Authorization: Bearer $TOKEN" \\',
+      '  -H "Content-Type: application/json" \\',
+      "  -d '{\"enabled\":true,\"previews_enabled\":false}'",
+      'echo ""',
+      "",
+      "# 3) Read the account subdomain and print the final bridge URL",
+      'SUB=$(curl -s "' + workersBase + '/subdomain" -H "Authorization: Bearer $TOKEN" \\',
+      "  | sed -n 's/.*\"subdomain\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p' \\",
+      "  | head -n 1)",
+      'if [ -n "$SUB" ]; then',
+      '  echo ""',
+      '  echo "=============================================="',
+      '  echo "Bridge URL: https://cf-bridge.$SUB.workers.dev"',
+      '  echo "=============================================="',
+      '  echo "Copy this URL into the panel field."',
+      "else",
+      '  echo ""',
+      '  echo "Could not read the subdomain automatically."',
+      '  echo "Open: dash.cloudflare.com -> Workers & Pages -> cf-bridge"',
+      '  echo "and copy its URL from there (it looks like https://cf-bridge.xxx.workers.dev)"',
+      "fi",
     ].join("\n");
     $("bCmd").value = cmd;
   },
@@ -907,15 +929,38 @@ const Update = {
       const r = await cfFetch("accounts/" + S.accountId + "/workers/scripts", { timeoutMs: 20000 });
       if (!r.ok) throw new Error(friendlyCfError(r.data.errors, r.status));
       const list = Array.isArray(r.data.result) ? r.data.result : [];
+      const names = list.map((s) => (typeof s === "string" ? s : (s.id || s.name || ""))).filter(Boolean);
+      // datalist برای مرورگرهایی که پشتیبانی می‌کنند
       const dl = $("workerList");
       dl.innerHTML = "";
-      list.forEach((s) => {
-        const o = document.createElement("option");
-        o.value = s.id || s;
-        dl.appendChild(o);
+      names.forEach((n) => { const o = document.createElement("option"); o.value = n; dl.appendChild(o); });
+      // چیپ‌های قابل‌کلیک — در همه مرورگرها دیده می‌شوند
+      ["workerPick", "workerPick2"].forEach((cid) => {
+        const c = $(cid);
+        if (!c) return;
+        c.innerHTML = "";
+        if (!names.length) {
+          const s = document.createElement("span");
+          s.className = "pick-empty";
+          s.textContent = "هیچ ورکری در این اکانت نیست — از تب «راه‌اندازی جدید» شروع کن";
+          c.appendChild(s);
+          return;
+        }
+        names.forEach((n) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "pickbtn";
+          b.textContent = n;
+          b.onclick = () => {
+            $("uWorkerName").value = n;
+            if ($("uVarsWorker")) $("uVarsWorker").value = n;
+            toast("انتخاب شد: " + n + " ✅");
+          };
+          c.appendChild(b);
+        });
       });
-      toast(list.length + " ورکر پیدا شد ✅");
-      if (!list.length) toast("هیچ ورکری در این اکانت نیست — از تب «راه‌اندازی جدید» شروع کن");
+      toast(names.length ? names.length + " ورکر پیدا شد ✅ — از لیست زیر یکی را لمس کن" : "هیچ ورکری در این اکانت نیست — از تب «راه‌اندازی جدید» شروع کن");
+      if (names.length) $("workerPick").scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (e) {
       toast(e.friendly || e.message);
     }

@@ -45,6 +45,7 @@
     <div class="field">
       <label>API Token کلادفلر</label>
       <input id="fToken" type="password" dir="ltr" autocomplete="off" placeholder="توکن با دسترسی Workers Scripts + D1">
+      <p class="hint">ساخت سریع توکن با دقیقاً همان دسترسی‌های لازم: <a href="https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22d1%22%2C%22type%22%3A%22edit%22%7D%5D&amp;accountId=*&amp;zoneId=all&amp;name=Workers-D1-Token-byW6W" target="_blank" rel="noopener">ساخت توکن Workers + D1 ↗</a> — در صفحه‌ی باز‌شده فقط «Create Token» و بعد «Continue to overview» را بزن و توکن را همین‌جا بچسبان.</p>
     </div>
 
     <div class="field">
@@ -176,6 +177,7 @@
           <datalist id="workerList"></datalist>
           <button class="btn btn-sm" onclick="Update.listWorkers()">دریافت لیست</button>
         </div>
+        <div id="workerPick" class="pick"></div>
       </div>
       <div class="source">
         <div class="row gap">
@@ -230,8 +232,10 @@
         <label>Worker</label>
         <div class="row">
           <input id="uVarsWorker" dir="ltr" list="workerList" placeholder="نام ورکر">
+          <button class="btn btn-sm" onclick="Update.listWorkers()">لیست</button>
           <button class="btn btn-sm" onclick="Update.showBindings()">مشاهده</button>
         </div>
+        <div id="workerPick2" class="pick"></div>
       </div>
       <div id="bindingsView" class="bindings"></div>
       <details class="adv" id="varsEditWrap" hidden>
@@ -357,7 +361,7 @@
           <textarea id="bCmd" dir="ltr" rows="4" readonly></textarea>
           <button class="btn btn-sm" onclick="UI.copy('bCmd')">کپی</button>
         </div>
-        <p class="hint">خروجی باید <code>"success":true</code> بدهد و آخرش آدرس پل را چاپ کند.</p>
+        <p class="hint">کل دستور انگلیسی است و آخرش خط <code>Bridge URL: https://cf-bridge.xxx.workers.dev</code> را چاپ می‌کند — همان را در کادر «آدرس ورکر» بالا بچسبان. اگر نچاپید، آدرس را از داشبورد (Workers &amp; Pages ← cf-bridge) بردار.</p>
       </div>
     </details>
 
