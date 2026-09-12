@@ -1,8 +1,8 @@
 {
-  "name": "bale-shop-helper",
-  "version": "1.0.0",
+  "name": "simple-cloudfire-worker-changer",
+  "version": "2.0.0",
   "private": true,
-  "description": "پنل دیپلوی خودکار Cloudflare Worker ربات فروشگاه بله/تلگرام + جای‌گاه کد worker.js",
+  "description": "راه‌انداز و به‌روزرسان سریع Cloudflare Worker + D1 — ساخت دیتابیس، اجرای اسکیما، آپلود کد و مدیریت Variable/Secret بدون کپی‌پیست",
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",

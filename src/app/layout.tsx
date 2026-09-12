@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "پنل دیپلوی ربات فروشگاه — بله/تلگرام (نسخه ۷.۳)",
+  title: "راه‌انداز و به‌روزرسان Cloudflare Worker + D1 (نسخه ۲)",
   description:
-    "پنل کمکی برای دیپلوی خودکار Cloudflare Worker ربات فروشگاهی بله/تلگرام — بدون کپی‌پیست، با حفظ متغیرها و اتصال D1",
+    "ابزار عمومی ساخت و بروزرسانی سریع Cloudflare Worker و دیتابیس D1 با آپلود فایل — بدون کپی‌پیست، با حفظ متغیرها",
   icons: {
     icon: "/logo.svg",
   },
