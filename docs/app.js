@@ -1,0 +1,1122 @@
+"use strict";
+/* ═══════════════════════════════════════════════════════════════════════════
+   راه‌انداز Cloudflare Worker + D1 — نسخه استاتیک (GitHub Pages)
+   همه فراخوانی‌های Cloudflare از طریق «پل» شخصی کاربر انجام می‌شود
+   (api.cloudflare.com هدر CORS ندارد — تست شده ۲۰۲۶-۰۹).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── کد پل (یک ورکر کوچک که فقط درخواست را به کلادفلر رد می‌کند) ─── */
+const BRIDGE_CODE = [
+  '/**',
+  ' * CF Bridge — پل مرورگر به Cloudflare API',
+  ' * فقط درخواست‌های مسیر /cf/... را به api.cloudflare.com/client/v4 رد می‌کند.',
+  ' * هیچ داده‌ای ذخیره یا لاگ نمی‌شود. اختیاری: Secret با نام BRIDGE_KEY بسازی،',
+  ' * آنگاه هر درخواست باید هدر X-Bridge-Key با همان مقدار بفرستد.',
+  ' */',
+  'const CORS_HEADERS = {',
+  '  "Access-Control-Allow-Origin": "*",',
+  '  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",',
+  '  "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Bridge-Key",',
+  '  "Access-Control-Max-Age": "86400"',
+  '};',
+  '',
+  'function json(obj, status) {',
+  '  return new Response(JSON.stringify(obj), {',
+  '    status: status || 200,',
+  '    headers: Object.assign({ "content-type": "application/json" }, CORS_HEADERS)',
+  '  });',
+  '}',
+  '',
+  'export default {',
+  '  async fetch(request, env) {',
+  '    if (request.method === "OPTIONS") {',
+  '      return new Response(null, { status: 204, headers: CORS_HEADERS });',
+  '    }',
+  '    const url = new URL(request.url);',
+  '    if (url.pathname === "/") {',
+  '      return json({ ok: true, bridge: "cf-bridge", usage: "/cf/<cloudflare-api-path>" });',
+  '    }',
+  '    if (env && env.BRIDGE_KEY) {',
+  '      const k = request.headers.get("x-bridge-key");',
+  '      if (k !== env.BRIDGE_KEY) return json({ success: false, errors: [{ code: 401, message: "bridge key required" }] }, 401);',
+  '    }',
+  '    if (!url.pathname.startsWith("/cf/")) {',
+  '      return json({ success: false, errors: [{ code: 404, message: "path must start with /cf/" }] }, 404);',
+  '    }',
+  '    const target = "https://api.cloudflare.com/client/v4/" + url.pathname.slice(4) + url.search;',
+  '    const headers = new Headers();',
+  '    const auth = request.headers.get("authorization");',
+  '    if (auth) headers.set("authorization", auth);',
+  '    const ct = request.headers.get("content-type");',
+  '    if (ct) headers.set("content-type", ct);',
+  '    const body = (request.method === "GET" || request.method === "HEAD") ? undefined : await request.arrayBuffer();',
+  '    try {',
+  '      const res = await fetch(target, { method: request.method, headers: headers, body: body });',
+  '      const out = new Headers(res.headers);',
+  '      for (const k in CORS_HEADERS) out.set(k, CORS_HEADERS[k]);',
+  '      return new Response(res.body, { status: res.status, headers: out });',
+  '    } catch (e) {',
+  '      return json({ success: false, errors: [{ code: 0, message: "bridge upstream failed" }] }, 502);',
+  '    }',
+  '  }',
+  '};',
+  '',
+].join("\n");
+
+const CF = "https://api.cloudflare.com/client/v4";
+const DEFAULT_COMPAT = "2025-09-01";
+const LS = {
+  bridge: "cfw.bridge",
+  account: "cfw.accountId",
+  last: "cfw.last",
+  repo: "cfw.repo",
+};
+const S = {
+  bridge: "",
+  token: "",
+  accountId: "",
+  connected: false,
+};
+
+/* ═══════════ ابزارهای پایه ═══════════ */
+
+const $ = (id) => document.getElementById(id);
+
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function toast(text, ms) {
+  const t = $("toast");
+  t.textContent = text;
+  t.hidden = false;
+  clearTimeout(t._h);
+  t._h = setTimeout(() => { t.hidden = true; }, ms || 2600);
+}
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      return true;
+    } catch (e2) { return false; }
+  }
+}
+
+/* ─── پیام فارسی خطاهای Cloudflare ─── */
+function friendlyCfError(errors, status) {
+  const first = (errors && errors[0]) || {};
+  const code = first.code || 0;
+  const msg = first.message || "خطای ناشناخته";
+  if (code === 10000 || code === 9109 || code === 9106 || status === 401 || status === 403) {
+    return "توکن API نامعتبر است یا دسترسی کافی ندارد. مطمئن شو دسترسی Workers Scripts و D1 را دارد. (" + msg + ")";
+  }
+  if (code === 10041 || status === 404) {
+    return "منبع موردنظر در Cloudflare پیدا نشد — نام Worker یا دیتابیس را چک کن. (" + msg + ")";
+  }
+  if (code === 7003 || code === 7000) {
+    return "Account ID اشتباه به نظر می‌رسد. از نوار آدرس داشبورد کپی‌اش کن. (" + msg + ")";
+  }
+  if (code === 6003) {
+    return "هدر درخواست نامعتبر است — توکن را کامل و بدون فاصله اضافه بچسبان. (" + msg + ")";
+  }
+  return "Cloudflare: " + msg + " (کد " + code + ")";
+}
+
+/* ─── فراخوانی از طریق پل ─── */
+async function cfFetch(path, init) {
+  init = init || {};
+  if (!S.bridge) throw { friendly: "اول پل را نصب و آدرسش را در کارت اتصال وارد کن." };
+  const headers = Object.assign({}, init.headers || {});
+  if (S.token) headers["Authorization"] = "Bearer " + S.token;
+  let res;
+  try {
+    res = await fetch(S.bridge + "/cf/" + path, {
+      method: init.method || "GET",
+      headers: headers,
+      body: init.body,
+      signal: (init.timeoutMs ? AbortSignal.timeout(init.timeoutMs) : undefined),
+    });
+  } catch (e) {
+    if (e && e.name === "TimeoutError") throw { friendly: "پاسخ پل دیر آمد (تایم‌اوت). دوباره تلاش کن." };
+    throw { friendly: "پل در دسترس نیست — آدرسش را چک کن یا دوباره نصبش کن." };
+  }
+  let data = {};
+  try { data = await res.json(); } catch (e) { /* بدنه غیر JSON */ }
+  const ok = res.ok && data && data.success !== false;
+  return { status: res.status, data: data || {}, ok: ok };
+}
+
+function cfFail(r) {
+  const e = new Error(friendlyCfError(r.data && r.data.errors, r.status));
+  e.cf = true;
+  return e;
+}
+
+/* ─── گارد کد خالی/placeholder ─── */
+function looksEmptyWorker(code) {
+  const stripped = code
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("//"))
+    .join("\n")
+    .trim();
+  return stripped.length < 200 || !stripped.includes("export default");
+}
+
+/* ─── ابزار SQL: جداسازی دستورها با احترام به رشته/کامنت/تریگر ─── */
+function shouldSplitNow(cur) {
+  const up = cur.toUpperCase();
+  const t = up.lastIndexOf("CREATE TRIGGER");
+  if (t === -1) return true;
+  const seg = up.slice(t);
+  const begins = (seg.match(/\bBEGIN\b/g) || []).length;
+  const ends = (seg.match(/\bEND\b/g) || []).length;
+  return ends >= begins;
+}
+
+function splitSqlStatements(sql) {
+  const out = [];
+  let cur = "", i = 0;
+  let inSingle = false, inDouble = false, inLine = false, inBlock = false;
+  while (i < sql.length) {
+    const ch = sql[i];
+    const next = i + 1 < sql.length ? sql[i + 1] : "";
+    if (inLine) { cur += ch; if (ch === "\n") inLine = false; i++; continue; }
+    if (inBlock) {
+      cur += ch;
+      if (ch === "*" && next === "/") { cur += next; i += 2; inBlock = false; continue; }
+      i++; continue;
+    }
+    if (inSingle) {
+      cur += ch;
+      if (ch === "'") {
+        if (next === "'") { cur += next; i += 2; continue; }
+        inSingle = false;
+      }
+      i++; continue;
+    }
+    if (inDouble) {
+      cur += ch;
+      if (ch === '"') {
+        if (next === '"') { cur += next; i += 2; continue; }
+        inDouble = false;
+      }
+      i++; continue;
+    }
+    if (ch === "-" && next === "-") { inLine = true; cur += ch + next; i += 2; continue; }
+    if (ch === "/" && next === "*") { inBlock = true; cur += ch + next; i += 2; continue; }
+    if (ch === "'") { inSingle = true; cur += ch; i++; continue; }
+    if (ch === '"') { inDouble = true; cur += ch; i++; continue; }
+    if (ch === ";") {
+      if (!shouldSplitNow(cur)) { cur += ch; i++; continue; }
+      const stmt = cur.trim();
+      if (stmt) out.push(stmt);
+      cur = ""; i++; continue;
+    }
+    cur += ch; i++;
+  }
+  const rest = cur.trim();
+  if (rest) out.push(rest);
+  return out;
+}
+
+function chunkStatements(stmts, maxChars, maxCount) {
+  maxChars = maxChars || 80000; maxCount = maxCount || 40;
+  const chunks = [];
+  let curChunk = [], curLen = 0;
+  for (const s of stmts) {
+    const len = s.length + 1;
+    if (curChunk.length > 0 && (curLen + len > maxChars || curChunk.length >= maxCount)) {
+      chunks.push(curChunk); curChunk = []; curLen = 0;
+    }
+    curChunk.push(s); curLen += len;
+  }
+  if (curChunk.length) chunks.push(curChunk);
+  return chunks;
+}
+
+/* ═══════════ UI ═══════════ */
+const UI = {
+  tab(name) {
+    document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+    ["setup", "update", "webhook"].forEach((t) => { $("tab-" + t).hidden = t !== name; });
+  },
+  seg(segName) {
+    document.querySelectorAll("#tab-update .segbtn").forEach((b) => b.classList.toggle("active", b.dataset.seg === segName));
+    ["uWorker", "uD1", "uVars"].forEach((s) => { $("seg-" + s).hidden = s !== segName; });
+  },
+  openConn() { $("connCard").hidden = false; $("connCard").scrollIntoView({ behavior: "smooth", block: "start" }); },
+  async copy(id) {
+    const ok = await copyToClipboard($(id).value);
+    toast(ok ? "کپی شد ✅" : "کپی نشد — دستی انتخاب و کپی کن");
+  },
+  chip() {
+    const c = $("connChip");
+    if (S.connected) { c.className = "chip chip-on"; c.textContent = "● متصل"; }
+    else { c.className = "chip chip-off"; c.textContent = "● وصل نیست"; }
+  },
+};
+
+/* ═══════════ گزارش زنده ═══════════ */
+const Log = {
+  add(text, cls) {
+    $("logCard").hidden = false;
+    const d = document.createElement("div");
+    d.className = "l-" + (cls || "info");
+    d.textContent = text;
+    $("log").appendChild(d);
+    $("log").scrollTop = $("log").scrollHeight;
+  },
+  step(text) { Log.add(text, "step"); },
+  clear() { $("log").innerHTML = ""; $("logCard").hidden = true; },
+};
+
+function stepMsg(id, text, cls) {
+  const el = $(id);
+  el.textContent = text || "";
+  el.className = "stepmsg" + (cls ? " " + cls : "");
+  if (text) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+/* ═══════════ اتصال ═══════════ */
+const Conn = {
+  async connect() {
+    const btn = $("btnConnect");
+    const msg = $("connMsg");
+    S.bridge = ($("fBridge").value || "").trim().replace(/\/+$/, "");
+    S.token = ($("fToken").value || "").trim();
+    S.accountId = ($("fAccount").value || "").trim();
+    msg.className = "msg"; msg.textContent = "";
+
+    if (!S.bridge || !/^https:\/\/.+/.test(S.bridge)) {
+      msg.className = "msg err";
+      msg.textContent = "آدرس پل لازم است و باید با https:// شروع شود. اگر پل نداری، دکمه «نصب پل» را بزن (فقط یک بار طول می‌کشد).";
+      return;
+    }
+    if (!S.token) {
+      msg.className = "msg err";
+      msg.textContent = "API Token کلادفلر لازم است. از dash.cloudflare.com/profile/api-tokens بسازش (دسترسی Workers Scripts Edit + D1 Edit).";
+      return;
+    }
+    localStorage.setItem(LS.bridge, S.bridge);
+    btn.disabled = true;
+    msg.className = "msg"; msg.textContent = "در حال راستی‌آزمایی توکن از طریق پل…";
+    try {
+      const v = await cfFetch("user/tokens/verify", { timeoutMs: 20000 });
+      if (!v.ok) { msg.className = "msg err"; msg.textContent = friendlyCfError(v.data.errors, v.status); return; }
+      Log.add("توکن معتبر است ✅", "ok");
+
+      let accounts = [];
+      let needsAccountId = false;
+      try {
+        const a = await cfFetch("accounts?per_page=50", { timeoutMs: 20000 });
+        if (a.ok && Array.isArray(a.data.result)) {
+          accounts = a.data.result.map((x) => ({ id: x.id, name: x.name }));
+        } else needsAccountId = true;
+      } catch (e) { needsAccountId = true; }
+
+      if (!S.accountId && accounts.length === 1) {
+        S.accountId = accounts[0].id;
+      } else if (!S.accountId && accounts.length > 1) {
+        const pick = accounts.map((x, i) => (i + 1) + ") " + x.name + " — " + x.id.slice(0, 8) + "…").join("\n");
+        const idx = prompt("چند اکانت پیدا شد، شماره‌اش را بزن:\n" + pick, "1");
+        const n = parseInt(idx, 10);
+        if (n >= 1 && n <= accounts.length) S.accountId = accounts[n - 1].id;
+      }
+      if (!S.accountId) needsAccountId = true;
+      if (needsAccountId && !S.accountId) {
+        msg.className = "msg err";
+        msg.textContent = "توکن معتبر است ولی Account ID لازم است — از نوار آدرس داشبورد کلادفلر کپی‌اش کن و دوباره بزن.";
+        $("fAccount").focus();
+        return;
+      }
+      localStorage.setItem(LS.account, S.accountId);
+
+      // راستی‌آزمایی نهایی: نام اکانت
+      let accName = "";
+      try {
+        const g = await cfFetch("accounts/" + S.accountId, { timeoutMs: 15000 });
+        if (g.ok && g.data.result) accName = g.data.result.name || "";
+      } catch (e) { /* نمایش اختیاری */ }
+
+      S.connected = true;
+      sessionStorage.setItem("cfw.token", S.token);
+      msg.className = "msg ok";
+      msg.textContent = "متصل شد ✅" + (accName ? " — اکانت: " + accName : "");
+      $("tabsNav").hidden = false;
+      $("connCard").hidden = true;
+      UI.chip();
+      Setup.loadDefaults();
+      Log.add("اتصال کامل شد — Account: " + S.accountId.slice(0, 8) + "…", "ok");
+      if (!$("sWorker").value) $("sWorker").focus();
+    } catch (e) {
+      msg.className = "msg err";
+      msg.textContent = e.friendly || "اتصال به پل ممکن نشد — آدرس پل را چک کن.";
+    } finally {
+      btn.disabled = false;
+    }
+  },
+};
+
+/* ═══════════ پل ═══════════ */
+const Bridge = {
+  openModal() {
+    $("bToken").value = S.token || $("fToken").value || "";
+    $("bAccount").value = S.accountId || $("fAccount").value || "";
+    $("bCode").value = BRIDGE_CODE;
+    Bridge.genCommand();
+    $("bridgeModal").hidden = false;
+  },
+  closeModal() { $("bridgeModal").hidden = true; },
+  genCommand() {
+    const t = ($("bToken").value || "").trim();
+    const a = ($("bAccount").value || "").trim();
+    if (!t || !a) {
+      $("bCmd").value = "اول توکن و Account ID را در بالا وارد کن تا دستور آماده شود.";
+      return;
+    }
+    const base = "https://api.cloudflare.com/client/v4/accounts/" + a + "/workers/scripts";
+    const cmd = [
+      'curl -s -X PUT "' + base + '/cf-bridge" \\',
+      '  -H "Authorization: Bearer ' + t + '" \\',
+      "  -F 'metadata={\"main_module\":\"bridge.js\",\"compatibility_date\":\"" + DEFAULT_COMPAT + "\"};type=application/json' \\",
+      "  -F 'bridge.js=@-;filename=bridge.js;type=application/javascript+module' <<'CFBRIDGE_EOF_7'",
+      BRIDGE_CODE.replace(/\n+$/, ""),
+      "CFBRIDGE_EOF_7",
+      "",
+      'curl -s -X POST "' + base + '/cf-bridge/subdomain" \\',
+      '  -H "Authorization: Bearer ' + t + '" \\',
+      "  -H \"Content-Type: application/json\" -d '{\"enabled\":true,\"previews_enabled\":false}' > /dev/null",
+      "",
+      'echo "پاسخ subdomain (برای اطمینان):"',
+      'curl -s "' + base.replace("/workers/scripts", "/workers") + '/subdomain" -H "Authorization: Bearer ' + t + '"',
+      'echo ""',
+      'echo "آدرس پل: https://cf-bridge.$(curl -s "' + base.replace("/workers/scripts", "/workers") + '/subdomain" -H "Authorization: Bearer ' + t + '" | grep -o \'"subdomain":"[^"]*"\' | cut -d\'"\' -f4).workers.dev"',
+    ].join("\n");
+    $("bCmd").value = cmd;
+  },
+  async testAndSave() {
+    const msg = $("bridgeMsg");
+    let url = ($("bUrl").value || "").trim().replace(/\/+$/, "");
+    if (!/^https:\/\/.+/.test(url)) {
+      msg.className = "msg err";
+      msg.textContent = "آدرس پل باید کامل و با https:// باشد — همان خطی که دستور چاپ کرد.";
+      return;
+    }
+    msg.className = "msg"; msg.textContent = "در حال تست پل…";
+    try {
+      const res = await fetch(url + "/cf/user/tokens/verify", {
+        headers: { "Authorization": "Bearer " + (($("bToken").value || "").trim() || S.token || "x") },
+        signal: AbortSignal.timeout(20000),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success !== true) {
+        const em = data && data.errors && data.errors[0] ? data.errors[0].message : ("HTTP " + res.status);
+        msg.className = "msg err";
+        msg.textContent = "پل پاسخ داد ولی توکن رد شد: " + em + " — اگر توکن تازه ساخته‌ای چند لحظه صبر کن و دوباره بزن.";
+        return;
+      }
+      localStorage.setItem(LS.bridge, url);
+      S.bridge = url;
+      $("fBridge").value = url;
+      msg.className = "msg ok";
+      msg.textContent = "پل وصل و ذخیره شد ✅ — حالا در کارت اتصال، توکن را وارد و «اتصال» را بزن.";
+      $("bridgeHint").textContent = "پل نصب و تست شده: " + url;
+      Bridge.closeModal();
+      UI.openConn();
+      toast("پل آماده شد 🎉");
+    } catch (e) {
+      msg.className = "msg err";
+      msg.textContent = "به پل دسترسی نبود — مطمئن شو دستور را کامل اجرا کرده‌ای و آدرس را درست چسبانده‌ای. (" + e.message + ")";
+    }
+  },
+};
+
+/* ═══════════ منبع کد (فایل / متن / ریپو) ═══════════ */
+const Source = {
+  async fileToText(inputId, textareaId, badgeId) {
+    const f = $(inputId).files && $(inputId).files[0];
+    if (!f) return;
+    const text = await f.text();
+    $(textareaId).value = text;
+    $(badgeId).textContent = f.name + " (" + (text.length / 1024).toFixed(1) + "KB)";
+    toast("فایل خوانده شد");
+  },
+  repoBase() {
+    let r = null;
+    try { r = JSON.parse(localStorage.getItem(LS.repo) || "null"); } catch (e) { /* پیش‌فرض */ }
+    return r || { owner: "Alireza123456w6w", repo: "simple_cloudfire_worker_changer", branch: "main" };
+  },
+  async raw(path, taId, badgeId) {
+    const r = Source.repoBase();
+    const url = "https://raw.githubusercontent.com/" + r.owner + "/" + r.repo + "/" + r.branch + "/" + path + "?t=" + Date.now();
+    toast("در حال دریافت از ریپو…");
+    let res;
+    try {
+      res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+    } catch (e) {
+      toast("دریافت از ریپو ناموفق بود — اینترنت/آدرس ریپو را چک کن");
+      return false;
+    }
+    if (!res.ok) {
+      toast("فایل در ریپو پیدا نشد (HTTP " + res.status + ") — شاخه و نام فایل را چک کن");
+      return false;
+    }
+    const text = await res.text();
+    $(taId).value = text;
+    if (badgeId) $(badgeId).textContent = path + " (" + (text.length / 1024).toFixed(1) + "KB)";
+    toast(path + " از ریپو گرفته شد ✅");
+    return true;
+  },
+  fetchRepo(kind) {
+    if (kind === "schema") return Source.raw("setup.sql", "sSchemaText", "sSchemaName");
+    if (kind === "worker") return Source.raw("worker.js", "sCodeText", "sCodeName");
+    if (kind === "workerU") return Source.raw("worker.js", "uCodeText", "uCodeName");
+    if (kind === "sqlU") return Source.raw("setup.sql", "uSqlText", "uSqlName");
+  },
+};
+
+/* ═══════════ ویرایشگر متغیرها ═══════════ */
+const Vars = {
+  add(containerId, type, name, value) {
+    const box = $(containerId);
+    const row = document.createElement("div");
+    row.className = "vrow";
+    const t = document.createElement("button");
+    t.className = "vtype"; t.type = "button"; t.textContent = type === "secret" ? "🔒" : "V";
+    t.title = "کلیک = تبدیل Variable ↔ Secret";
+    t.onclick = () => { t.textContent = t.textContent === "V" ? "🔒" : "V"; };
+    const n = document.createElement("input");
+    n.dir = "ltr"; n.placeholder = "NAME"; n.value = name || "";
+    const v = document.createElement("input");
+    v.dir = "ltr"; v.placeholder = type === "secret" ? "مقدار (خالی = بدون تغییر)" : "value";
+    if (value !== undefined) v.value = value;
+    const d = document.createElement("button");
+    d.className = "vdel"; d.type = "button"; d.textContent = "✕";
+    d.onclick = () => row.remove();
+    row.append(t, n, v, d);
+    box.appendChild(row);
+  },
+  collect(containerId) {
+    const vars = {}, secrets = {};
+    $(containerId).querySelectorAll(".vrow").forEach((row) => {
+      const [t, n, v] = row.querySelectorAll("button, input");
+      const name = n.value.trim();
+      if (!name) return;
+      if (t.textContent === "🔒") {
+        if (v.value !== "") secrets[name] = v.value;
+      } else {
+        vars[name] = v.value;
+      }
+    });
+    return { vars: vars, secrets: secrets };
+  },
+};
+/* ═══════════ عملیات Cloudflare (هسته مشترک) ═══════════ */
+const CloudOps = {
+  async ensureD1(name) {
+    if (!/^[a-zA-Z0-9_-]{1,32}$/.test(name)) {
+      throw new Error("نام دیتابیس فقط حروف انگلیسی، عدد، خط تیره و زیرخط (حداکثر ۳۲ کاراکتر)");
+    }
+    const r = await cfFetch("accounts/" + S.accountId + "/d1/database", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name }),
+      timeoutMs: 30000,
+    });
+    if (r.ok && r.data.result && r.data.result.uuid) {
+      return { id: r.data.result.uuid, created: true };
+    }
+    // از قبل وجود دارد؟ → پیدا کن (اجرای تکراری بی‌خطر)
+    const msg = friendlyCfError(r.data.errors, r.status);
+    if (r.data.errors && r.data.errors[0] && r.data.errors[0].code === 7502 || /exist/i.test(msg)) {
+      const l = await cfFetch("accounts/" + S.accountId + "/d1/database?per_page=100", { timeoutMs: 20000 });
+      if (l.ok) {
+        const raw = Array.isArray(l.data.result) ? l.data.result : ((l.data.result && l.data.result.results) || []);
+        const found = raw.find((x) => x.name === name);
+        if (found && found.uuid) return { id: found.uuid, created: false };
+      }
+      throw new Error("دیتابیس از قبل هست ولی در لیست پیدا نشد — از تب «بروزرسانی» انتخابش کن");
+    }
+    throw new Error(msg);
+  },
+
+  async runSql(databaseId, sql) {
+    if (!sql || !sql.trim()) throw new Error("متن SQL خالی است");
+    const url = "accounts/" + S.accountId + "/d1/database/" + databaseId + "/query";
+    const post = (query, timeoutMs) => cfFetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sql: query }),
+      timeoutMs: timeoutMs,
+    });
+
+    // ۱) تلاش یک‌جا
+    if (sql.length <= 90000) {
+      try {
+        const r = await post(sql, 120000);
+        if (r.ok) {
+          const count = Array.isArray(r.data.result) ? r.data.result.length : 1;
+          return { mode: "script", executed: count || 1, total: count || 1 };
+        }
+      } catch (e) { if (e.cf || e.friendly) throw e; /* رفتن به روش تکه‌ای */ }
+    }
+
+    // ۲) روش تکه‌ای با پیدا کردن دستور مشکل‌دار
+    const stmts = splitSqlStatements(sql);
+    if (!stmts.length) throw new Error("هیچ دستور معتبری در SQL پیدا نشد");
+    const chunks = chunkStatements(stmts);
+    const errors = [];
+    let executed = 0;
+    for (const chunk of chunks) {
+      const joined = chunk.join(";\n") + ";";
+      let chunkOk = false;
+      try {
+        const r = await post(joined, 120000);
+        if (r.ok) { executed += chunk.length; chunkOk = true; }
+      } catch (e) { if (e.friendly) throw e; /* ادامه */ }
+      if (chunkOk) continue;
+      for (let i = 0; i < chunk.length; i++) {
+        const single = chunk[i];
+        const globalIndex = stmts.indexOf(single);
+        try {
+          const r2 = await post(single, 60000);
+          if (r2.ok) { executed++; continue; }
+          const q = r2.data || {};
+          errors.push({
+            n: globalIndex >= 0 ? globalIndex + 1 : i + 1,
+            preview: single.slice(0, 120),
+            message: (q.errors && q.errors[0] && q.errors[0].message) || ("HTTP " + r2.status),
+          });
+        } catch (e) {
+          if (e.friendly) throw e;
+          errors.push({ n: globalIndex >= 0 ? globalIndex + 1 : i + 1, preview: single.slice(0, 120), message: "اتصال قطع شد" });
+        }
+      }
+    }
+    if (errors.length) {
+      const detail = errors.slice(0, 8).map((e) => "• دستور " + e.n + ": " + e.message + "\n  " + e.preview.replace(/\n/g, " ")).join("\n");
+      const err = new Error(errors.length + " دستور از " + stmts.length + " دستور خطا داد" + (executed ? " (بقیه اجرا شدند)" : "") + ":\n" + detail);
+      err.partial = true;
+      throw err;
+    }
+    return { mode: "chunked", executed: executed, total: stmts.length };
+  },
+
+  async deployWorker(opts) {
+    // opts: {name, code, vars, secrets, d1:[{binding,id}], keepExisting}
+    if (looksEmptyWorker(opts.code)) {
+      throw new Error("کد ورکر خالی یا ناقص است (باید ES Module باشد و export default داشته باشد). اول کد کامل را وارد کن.");
+    }
+    const base = "accounts/" + S.accountId + "/workers/scripts/" + opts.name;
+
+    // ۱) تنظیمات فعلی (برای ورکر موجود)
+    let oldBindings = [];
+    let compatDate = DEFAULT_COMPAT;
+    let isNew = true;
+    try {
+      const s = await cfFetch(base + "/settings", { timeoutMs: 20000 });
+      if (s.ok) {
+        isNew = false;
+        oldBindings = (s.data.result && s.data.result.bindings) || [];
+        if (s.data.result && s.data.result.compatibility_date) compatDate = s.data.result.compatibility_date;
+      } else if (s.status !== 404) {
+        const err = new Error(friendlyCfError(s.data.errors, s.status));
+        err.cf = true;
+        throw err;
+      }
+    } catch (e) { if (e.cf) throw e; /* ورکر جدید → 404 طبیعی است */ }
+
+    // ۲) bindings جدید
+    const newBindings = [];
+    for (const [n, text] of Object.entries(opts.vars || {})) {
+      if (n.trim()) newBindings.push({ type: "plain_text", name: n.trim(), text: String(text == null ? "" : text) });
+    }
+    for (const [n, text] of Object.entries(opts.secrets || {})) {
+      if (n.trim() && String(text) !== "") newBindings.push({ type: "secret_text", name: n.trim(), text: String(text) });
+    }
+    for (const d of opts.d1 || []) {
+      if (d.binding && d.binding.trim() && d.id && d.id.trim()) {
+        newBindings.push({ type: "d1", name: d.binding.trim(), id: d.id.trim() });
+      }
+    }
+    const newTypes = Array.from(new Set(newBindings.map((b) => b.type)));
+    const keepTypes = opts.keepExisting !== false
+      ? Array.from(new Set(oldBindings.map((b) => b.type || "").concat(newTypes, ["secret_text"]))).filter(Boolean)
+      : newTypes;
+
+    const metadata = { main_module: "worker.js", compatibility_date: compatDate };
+    if (keepTypes.length) metadata.keep_bindings = keepTypes;
+    if (newBindings.length) metadata.bindings = newBindings;
+
+    // ۳) آپلود multipart
+    const fd = new FormData();
+    fd.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }), "metadata.json");
+    fd.append("worker.js", new Blob([opts.code], { type: "application/javascript+module" }), "worker.js");
+    const u = await cfFetch(base, { method: "PUT", body: fd, timeoutMs: 90000 });
+    if (!u.ok) throw new Error(friendlyCfError(u.data.errors, u.status));
+
+    // ۴) راستی‌آزمایی bindings
+    let bindingsAfter = [];
+    try {
+      const v = await cfFetch(base + "/settings", { timeoutMs: 20000 });
+      if (v.ok) {
+        const rb = (v.data.result && v.data.result.bindings) || [];
+        bindingsAfter = rb.map((b) => b.name || "").filter(Boolean).sort();
+      }
+    } catch (e) { /* فقط گزارش کمتر */ }
+    const beforeNames = oldBindings.map((b) => b.name || "").filter(Boolean).sort();
+    const lost = beforeNames.filter((n) => !bindingsAfter.includes(n));
+
+    // ۵) آدرس workers.dev
+    let url = null;
+    try {
+      await cfFetch(base + "/subdomain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: true, previews_enabled: false }),
+        timeoutMs: 20000,
+      });
+      const sd = await cfFetch("accounts/" + S.accountId + "/workers/subdomain", { timeoutMs: 20000 });
+      const sub = sd.data.result && sd.data.result.subdomain;
+      if (sub) url = "https://" + opts.name + "." + sub + ".workers.dev";
+    } catch (e) { /* نمایش URL اختیاری */ }
+
+    return { isNew: isNew, url: url, kept: bindingsAfter, lost: lost, compatDate: compatDate };
+  },
+
+  async saveVarsOnly(workerName, vars, secrets) {
+    const base = "accounts/" + S.accountId + "/workers/scripts/" + workerName;
+    const s = await cfFetch(base + "/settings", { timeoutMs: 20000 });
+    if (!s.ok) throw new Error(friendlyCfError(s.data.errors, s.status));
+    const cur = (s.data.result && s.data.result.bindings) || [];
+    const kept = cur.filter((b) => b.type !== "plain_text" && b.type !== "secret_text");
+    const fresh = [];
+    for (const [n, text] of Object.entries(vars || {})) {
+      if (n.trim()) fresh.push({ type: "plain_text", name: n.trim(), text: String(text == null ? "" : text) });
+    }
+    for (const [n, text] of Object.entries(secrets || {})) {
+      if (n.trim() && String(text) !== "") fresh.push({ type: "secret_text", name: n.trim(), text: String(text) });
+    }
+    const body = { bindings: kept.concat(fresh) };
+    if (s.data.result && s.data.result.compatibility_date) body.compatibility_date = s.data.result.compatibility_date;
+    const p = await cfFetch(base + "/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      timeoutMs: 30000,
+    });
+    if (!p.ok) throw new Error(friendlyCfError(p.data.errors, p.status));
+    return true;
+  },
+
+  async webhookCall(platform, botToken, method, params) {
+    const host = platform === "telegram" ? "api.telegram.org" : "api.bale.ai";
+    const qs = new URLSearchParams(params).toString();
+    const url = "https://" + host + "/bot" + botToken + "/" + method + (qs ? "?" + qs : "");
+    const res = await fetch(url, { signal: AbortSignal.timeout(25000) });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok && data.ok === true, data: data, status: res.status };
+  },
+};
+
+/* ═══════════ تب راه‌اندازی ═══════════ */
+const Setup = {
+  loadDefaults() {
+    let d = null;
+    try { d = JSON.parse(localStorage.getItem(LS.last) || "null"); } catch (e) { /* خالی */ }
+    if (d) {
+      if (d.worker && !$("sWorker").value) $("sWorker").value = d.worker;
+      if (d.d1 && !$("sD1").value) $("sD1").value = d.d1;
+      if (d.binding) $("sBinding").value = d.binding;
+    }
+  },
+  saveDefaults() {
+    localStorage.setItem(LS.last, JSON.stringify({
+      worker: $("sWorker").value.trim(),
+      d1: $("sD1").value.trim(),
+      binding: $("sBinding").value.trim(),
+    }));
+  },
+  validateNames() {
+    const w = ($("sWorker").value || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+    $("sWorker").value = w;
+    const d1 = ($("sD1").value || "").trim();
+    const binding = ($("sBinding").value || "").trim();
+    if (!w) throw new Error("نام Worker لازم است (حروف انگلیسی/عدد/خط تیره)");
+    return { w: w, d1: d1, binding: binding };
+  },
+
+  async stepD1(alsoRunAll) {
+    const msg = $("msgD1");
+    try {
+      const { d1, binding } = Setup.validateNames();
+      const schema = ($("sSchemaText").value || "").trim();
+      if (!d1) throw new Error("نام دیتابیس D1 را وارد کن (یا اگر دیتابیس نمی‌خواهی، از مرحله ۳ ادامه بده)");
+      if (!schema) throw new Error("اسکیمای SQL خالی است — فایل بده، بچسبان، یا از ریپو بگیر");
+      stepMsg("msgD1", "در حال ساخت/پیدا کردن دیتابیس…", "busy");
+      const db = await CloudOps.ensureD1(d1);
+      Log.step("🗄️ D1: " + d1 + (db.created ? " ساخته شد ✅" : " از قبل بوده — همان استفاده می‌شود"));
+      Log.add("شناسه دیتابیس: " + db.id);
+      stepMsg("msgD1", "دیتابیس آماده است — در حال اجرای اسکیما…", "busy");
+      const res = await CloudOps.runSql(db.id, schema);
+      const done = (db.created ? "دیتابیس ساخته شد و " : "دیتابیس موجود و ") + "اسکیما اجرا شد ✅ (" + res.executed + " دستور)";
+      stepMsg("msgD1", done, "ok");
+      Log.add("📋 اجرای SQL: " + res.executed + " دستور (" + res.mode + ")", "ok");
+      return db;
+    } catch (e) {
+      stepMsg("msgD1", "❌ " + (e.friendly || e.message), "err");
+      Log.add("خطای مرحله D1: " + (e.friendly || e.message), "err");
+      throw e;
+    }
+  },
+
+  async stepDeploy() {
+    const msg = $("msgDeploy");
+    try {
+      const { w, d1, binding } = Setup.validateNames();
+      const code = $("sCodeText").value || "";
+      const v = Vars.collect("sVars");
+      let d1Bindings = [];
+      if (d1 && binding) {
+        stepMsg("msgDeploy", "در حال پیدا کردن دیتابیس…", "busy");
+        const db = await CloudOps.ensureD1(d1);
+        d1Bindings = [{ binding: binding, id: db.id }];
+      }
+      stepMsg("msgDeploy", "در حال آپلود کد…", "busy");
+      const res = await CloudOps.deployWorker({
+        name: w, code: code, vars: v.vars, secrets: v.secrets, d1: d1Bindings, keepExisting: true,
+      });
+      Setup.saveDefaults();
+      let text = (res.isNew ? "Worker جدید ساخته و دیپلو شد ✅" : "Worker بروزرسانی شد ✅") +
+        (res.url ? "\n🔗 " + res.url : "");
+      if (res.lost.length) text += "\n⚠️ این متغیرهای قبلی پیدا نشدند: " + res.lost.join(", ");
+      stepMsg("msgDeploy", text, "ok");
+      Log.step("⚙️ Worker «" + w + "» " + (res.isNew ? "ساخته شد" : "بروزرسانی شد") + (res.url ? " → " + res.url : ""));
+      if (res.kept.length) Log.add("Bindings فعلی: " + res.kept.join(", "));
+      if (res.url) $("wWorkerUrl").value = res.url;
+      return res;
+    } catch (e) {
+      stepMsg("msgDeploy", "❌ " + (e.friendly || e.message), "err");
+      Log.add("خطای دیپلوی Worker: " + (e.friendly || e.message), "err");
+      throw e;
+    }
+  },
+
+  async stepWebhook() {
+    const msg = $("msgHook");
+    try {
+      const platform = $("sHookPlatform").value;
+      const token = ($("sHookToken").value || "").trim();
+      if (!token) throw new Error("توکن ربات را وارد کن (یا وب‌هوک را رد کن)");
+      const { w } = Setup.validateNames();
+      let url = ($("wWorkerUrl").value || "").trim();
+      if (!url) {
+        const sd = await cfFetch("accounts/" + S.accountId + "/workers/subdomain", { timeoutMs: 15000 });
+        const sub = sd.data.result && sd.data.result.subdomain;
+        if (!sub) throw new Error("آدرس ورکر را وارد کن (workers.dev پیدا نشد)");
+        url = "https://" + w + "." + sub + ".workers.dev";
+      }
+      const hookUrl = url.replace(/\/+$/, "") + "/webhook";
+      stepMsg("msgHook", "در حال تنظیم وب‌هوک روی " + (platform === "telegram" ? "تلگرام" : "بله") + "…", "busy");
+      const r = await CloudOps.webhookCall(platform, token, "setWebhook", { url: hookUrl });
+      if (!r.ok) {
+        const d = r.data || {};
+        throw new Error("پلتفرم رد کرد: " + ((d.description || (d.errors && d.errors[0] && d.errors[0].message)) || ("HTTP " + r.status)));
+      }
+      stepMsg("msgHook", "وب‌هوک تنظیم شد ✅\n" + hookUrl, "ok");
+      Log.step("🪝 وب‌هوک تنظیم شد → " + hookUrl);
+      return true;
+    } catch (e) {
+      if (e.name === "TypeError") {
+        stepMsg("msgHook", "درخواست مستقیم از مرورگر رد شد (CORS پلتفرم) — از تب «وب‌هوک» روش دستی را استفاده کن.", "err");
+      } else {
+        stepMsg("msgHook", "❌ " + (e.friendly || e.message), "err");
+      }
+      Log.add("خطای وب‌هوک: " + (e.friendly || e.message), "err");
+      throw e;
+    }
+  },
+
+  async runAll() {
+    try {
+      const { w, d1, binding } = Setup.validateNames();
+      if (!($("sCodeText").value || "").trim()) throw new Error("کد Worker را وارد کن (فایل، پیست، یا از ریپو)");
+      Log.clear();
+      Log.step("▶️ اجرای خودکار: " + w);
+      let db = null;
+      if (d1 && ($("sSchemaText").value || "").trim()) {
+        db = await Setup.stepD1();
+      } else {
+        Log.add("مرحله D1 رد شد (نام دیتابیس یا اسکیما خالی بود)");
+      }
+      await Setup.stepDeploy();
+      if (($("sHookToken").value || "").trim()) {
+        try { await Setup.stepWebhook(); }
+        catch (e) { Log.add("راه‌اندازی کامل شد ولی وب‌هوک تنظیم نشد — بعداً از تب وب‌هوک انجامش بده", "err"); }
+      } else {
+        Log.add("مرحله وب‌هوک رد شد (توکن ربات خالی بود)");
+      }
+      Log.step("🎉 تمام شد — ورکر آماده است");
+      toast("راه‌اندازی کامل شد 🎉");
+    } catch (e) {
+      Log.add("⏹ اجرای خودکار در همین مرحله متوقف شد", "err");
+      toast("ناتمام ماند — گزارش را ببین");
+    }
+  },
+};
+
+/* ═══════════ تب بروزرسانی ═══════════ */
+const Update = {
+  async listWorkers() {
+    try {
+      toast("در حال گرفتن لیست ورکرها…");
+      const r = await cfFetch("accounts/" + S.accountId + "/workers/scripts", { timeoutMs: 20000 });
+      if (!r.ok) throw new Error(friendlyCfError(r.data.errors, r.status));
+      const list = Array.isArray(r.data.result) ? r.data.result : [];
+      const dl = $("workerList");
+      dl.innerHTML = "";
+      list.forEach((s) => {
+        const o = document.createElement("option");
+        o.value = s.id || s;
+        dl.appendChild(o);
+      });
+      toast(list.length + " ورکر پیدا شد ✅");
+      if (!list.length) toast("هیچ ورکری در این اکانت نیست — از تب «راه‌اندازی جدید» شروع کن");
+    } catch (e) {
+      toast(e.friendly || e.message);
+    }
+  },
+  async deploy() {
+    const msg = $("msgUWorker");
+    try {
+      const name = ($("uWorkerName").value || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+      if (!name) throw new Error("نام Worker را وارد کن یا از لیست انتخاب کن");
+      const code = $("uCodeText").value || "";
+      if (!code.trim()) throw new Error("کد جدید را وارد کن (فایل، پیست، یا از ریپو)");
+      const v = Vars.collect("uVars");
+      const hasVars = Object.keys(v.vars).length || Object.keys(v.secrets).length;
+      if (!hasVars) {
+        // هیچ متغیری داده نشده: برای حفظ کامل، keep_bindings کافی است
+        stepMsg("msgUWorker", "در حال آپلود کد جدید…", "busy");
+      }
+      stepMsg("msgUWorker", "در حال آپلود کد جدید…", "busy");
+      const res = await CloudOps.deployWorker({
+        name: name, code: code,
+        vars: v.vars, secrets: v.secrets, d1: [],
+        keepExisting: $("uKeep").checked,
+      });
+      let text = (res.isNew ? "⚠️ این نام قبلاً نبود — Worker جدید ساخته شد ✅" : "Worker بروزرسانی شد ✅") +
+        (res.url ? "\n🔗 " + res.url : "");
+      if (res.lost.length) text += "\n⚠️ این‌های قبلی پیدا نشدند: " + res.lost.join(", ");
+      stepMsg("msgUWorker", text, "ok");
+      Log.step("🔄 Worker «" + name + "» بروزرسانی شد" + (res.url ? " → " + res.url : ""));
+      if (res.url) $("wWorkerUrl").value = res.url;
+    } catch (e) {
+      stepMsg("msgUWorker", "❌ " + (e.friendly || e.message), "err");
+    }
+  },
+  async listD1() {
+    try {
+      toast("در حال گرفتن لیست دیتابیس‌ها…");
+      const r = await cfFetch("accounts/" + S.accountId + "/d1/database?per_page=100", { timeoutMs: 20000 });
+      if (!r.ok) throw new Error(friendlyCfError(r.data.errors, r.status));
+      const raw = Array.isArray(r.data.result) ? r.data.result : ((r.data.result && r.data.result.results) || []);
+      const sel = $("uD1Select");
+      sel.innerHTML = "";
+      if (!raw.length) {
+        const o = document.createElement("option");
+        o.textContent = "دیتابیسی نیست — از تب راه‌اندازی بساز";
+        sel.appendChild(o);
+        toast("هیچ دیتابیس D1ای در این اکانت نیست");
+        return;
+      }
+      raw.forEach((db) => {
+        const o = document.createElement("option");
+        o.value = db.uuid || db.database_id || "";
+        o.textContent = db.name + (db.created_at ? " — " + db.created_at.slice(0, 10) : "");
+        sel.appendChild(o);
+      });
+      toast(raw.length + " دیتابیس پیدا شد ✅");
+    } catch (e) {
+      toast(e.friendly || e.message);
+    }
+  },
+  async runSql() {
+    const msg = $("msgUD1");
+    try {
+      const dbId = $("uD1Select").value;
+      if (!dbId) throw new Error("اول لیست دیتابیس‌ها را بگیر و یکی را انتخاب کن");
+      const sql = $("uSqlText").value || "";
+      if (!sql.trim()) throw new Error("متن SQL خالی است");
+      stepMsg("msgUD1", "در حال اجرای SQL…", "busy");
+      const res = await CloudOps.runSql(dbId, sql);
+      stepMsg("msgUD1", "اجرا شد ✅ (" + res.executed + " دستور، روش " + (res.mode === "script" ? "یک‌جا" : "تکه‌ای") + ")", "ok");
+      Log.step("🗄️ SQL روی دیتابیس اجرا شد — " + res.executed + " دستور");
+    } catch (e) {
+      stepMsg("msgUD1", "❌ " + (e.friendly || e.message), "err");
+    }
+  },
+  async showBindings() {
+    const msg = $("msgUVars");
+    const view = $("bindingsView");
+    try {
+      const name = ($("uVarsWorker").value || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+      if (!name) throw new Error("نام Worker را وارد کن");
+      const r = await cfFetch("accounts/" + S.accountId + "/workers/scripts/" + name + "/settings", { timeoutMs: 20000 });
+      if (!r.ok) throw new Error(friendlyCfError(r.data.errors, r.status));
+      const bs = (r.data.result && r.data.result.bindings) || [];
+      view.innerHTML = "";
+      if (!bs.length) view.innerHTML = '<p class="hint">هیچ Bindingsای ندارد.</p>';
+      const TYPE_FA = {
+        plain_text: "متغیر", secret_text: "Secret", d1: "دیتابیس D1",
+        kv_namespace: "KV", r2_bucket: "R2", service: "سرویس ورکر",
+      };
+      bs.forEach((b) => {
+        const d = document.createElement("div");
+        d.className = "brow";
+        d.innerHTML = "<b>" + esc(b.name) + "</b><span class='btype'>" + (TYPE_FA[b.type] || b.type) + "</span>";
+        view.appendChild(d);
+      });
+      // پر کردن ویرایشگر با متغیرهای فعلی (مقدار Secretها هرگز برنمی‌گردد)
+      const ed = $("uVarsQuick");
+      ed.innerHTML = "";
+      bs.filter((b) => b.type === "plain_text").forEach((b) => Vars.add("uVarsQuick", "plain", b.name, b.text || ""));
+      bs.filter((b) => b.type === "secret_text").forEach((b) => Vars.add("uVarsQuick", "secret", b.name, ""));
+      $("varsEditWrap").hidden = false;
+      stepMsg("msgUVars", bs.length + " مورد پیدا شد — برای تغییر، ویرایشگر پایین را باز کن.", "ok");
+    } catch (e) {
+      stepMsg("msgUVars", "❌ " + (e.friendly || e.message), "err");
+    }
+  },
+  async saveBindings() {
+    const msg = $("msgUVars");
+    try {
+      const name = ($("uVarsWorker").value || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+      if (!name) throw new Error("نام Worker را وارد کن");
+      const v = Vars.collect("uVarsQuick");
+      stepMsg("msgUVars", "در حال ذخیره…", "busy");
+      await CloudOps.saveVarsOnly(name, v.vars, v.secrets);
+      stepMsg("msgUVars", "متغیرها ذخیره شد ✅ (بدون تغییر کد)", "ok");
+      Log.step("🧩 متغیرهای «" + name + "» بروزرسانی شد");
+      await Update.showBindings();
+    } catch (e) {
+      stepMsg("msgUVars", "❌ " + (e.friendly || e.message), "err");
+    }
+  },
+};
+
+/* ═══════════ تب وب‌هوک ═══════════ */
+const Webhook = {
+  fullUrl() {
+    const url = ($("wWorkerUrl").value || "").trim().replace(/\/+$/, "");
+    const path = ($("wPath").value || "/webhook").trim() || "/webhook";
+    return url + (path.startsWith("/") ? path : "/" + path);
+  },
+  async set() {
+    const msg = $("msgWebhook");
+    try {
+      const platform = $("wPlatform").value;
+      const token = ($("wBotToken").value || "").trim();
+      const hook = Webhook.fullUrl();
+      if (!/^https:\/\/.+/.test(hook)) throw new Error("آدرس ورکر را کامل وارد کن (https://…)");
+      if (!token) throw new Error("توکن ربات لازم است");
+      msg.className = "stepmsg busy"; msg.textContent = "در حال تنظیم…";
+      const r = await CloudOps.webhookCall(platform, token, "setWebhook", { url: hook });
+      if (!r.ok) {
+        const d = r.data || {};
+        throw new Error("پلتفرم رد کرد: " + ((d.description || (d.errors && d.errors[0] && d.errors[0].message)) || ("HTTP " + r.status)));
+      }
+      msg.className = "stepmsg ok"; msg.textContent = "وب‌هوک تنظیم شد ✅ → " + hook;
+      Log.step("🪝 وب‌هوک تنظیم شد → " + hook);
+    } catch (e) {
+      if (e.name === "TypeError" || e.name === "TimeoutError") {
+        msg.className = "stepmsg err";
+        msg.textContent = "درخواست مستقیم از مرورگر رد شد (CORS/شبکه). دستور زیر را کپی کن و در Termux اجرا کن:";
+        const platform = $("wPlatform").value;
+        const token = ($("wBotToken").value || "").trim();
+        const host = platform === "telegram" ? "api.telegram.org" : "api.bale.ai";
+        $("hookCmd").value = 'curl -s "https://' + host + '/bot' + token + '/setWebhook?url=' + encodeURIComponent(Webhook.fullUrl()) + '"';
+        $("hookFallback").hidden = false;
+        $("hookFallback").open = true;
+      } else {
+        msg.className = "stepmsg err"; msg.textContent = "❌ " + (e.friendly || e.message);
+      }
+    }
+  },
+  async info() {
+    const msg = $("msgWebhook");
+    try {
+      const platform = $("wPlatform").value;
+      const token = ($("wBotToken").value || "").trim();
+      if (!token) throw new Error("توکن ربات لازم است");
+      msg.className = "stepmsg busy"; msg.textContent = "در حال گرفتن وضعیت…";
+      const r = await CloudOps.webhookCall(platform, token, "getWebhookInfo", {});
+      if (!r.ok) throw new Error("پلتفرم رد کرد (توکن/شبکه را چک کن)");
+      const res = r.data.result || {};
+      msg.className = "stepmsg ok";
+      msg.textContent = "URL فعلی: " + (res.url || "— تنظیم نشده —") +
+        "\nآخرین خطا: " + (res.last_error_message || "ندارد") +
+        "\nدر صف: " + (res.pending_update_count || 0);
+    } catch (e) {
+      msg.className = "stepmsg err";
+      msg.textContent = "❌ " + (e.friendly || e.message) + (e.name === "TypeError" ? " — احتمالاً CORS پلتفرم اجازه نمی‌دهد؛ برای تنظیم، دکمه «تنظیم وب‌هوک» روش دستی نشان می‌دهد." : "");
+    }
+  },
+};
+
+/* ═══════════ شروع ═══════════ */
+(function init() {
+  // پیش‌فرض‌ها از حافظه
+  const bridge = localStorage.getItem(LS.bridge) || "";
+  $("fBridge").value = bridge;
+  S.bridge = bridge;
+  $("fAccount").value = localStorage.getItem(LS.account) || "";
+  const savedToken = sessionStorage.getItem("cfw.token") || "";
+  if (savedToken) { $("fToken").value = savedToken; S.token = savedToken; }
+
+  // تنظیمات ریپو (فیلدهای پنهان در ذخیره)
+  let r = null;
+  try { r = JSON.parse(localStorage.getItem(LS.repo) || "null"); } catch (e) { /* پیش‌فرض */ }
+  if (!r) {
+    r = { owner: "Alireza123456w6w", repo: "simple_cloudfire_worker_changer", branch: "main" };
+    localStorage.setItem(LS.repo, JSON.stringify(r));
+  }
+  if ($("sWorker")) Setup.loadDefaults();
+
+  // اتصال رویداد فایل‌ها
+  $("sSchemaFile").addEventListener("change", () => Source.fileToText("sSchemaFile", "sSchemaText", "sSchemaName"));
+  $("sCodeFile").addEventListener("change", () => Source.fileToText("sCodeFile", "sCodeText", "sCodeName"));
+  $("uCodeFile").addEventListener("change", () => Source.fileToText("uCodeFile", "uCodeText", "uCodeName"));
+  $("uSqlFile").addEventListener("change", () => Source.fileToText("uSqlFile", "uSqlText", "uSqlName"));
+
+  // تولید خودکار دستور پل هنگام تایپ
+  $("bToken").addEventListener("input", Bridge.genCommand);
+  $("bAccount").addEventListener("input", Bridge.genCommand);
+
+  // Enter در فرم اتصال
+  $("fToken").addEventListener("keydown", (e) => { if (e.key === "Enter") Conn.connect(); });
+  $("fAccount").addEventListener("keydown", (e) => { if (e.key === "Enter") Conn.connect(); });
+
+  UI.chip();
+  if (bridge) {
+    $("bridgeHint").textContent = "پل ذخیره‌شده: " + bridge + (savedToken ? " — توکن هم مانده، فقط «اتصال» را بزن" : "");
+  } else {
+    $("bridgeHint").textContent = "هنوز پل نداری؟ «نصب پل» — یک‌بار برای همیشه.";
+  }
+  // اگر همه‌چیز آماده بود، خودکار وصل کن
+  if (bridge && savedToken && (localStorage.getItem(LS.account) || "")) {
+    Conn.connect();
+  }
+})();

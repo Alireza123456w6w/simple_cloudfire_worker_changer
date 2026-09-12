@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="راه‌انداز و به‌روزرسان Cloudflare Worker + D1 — ابزار عمومی تحت وب، بدون نصب">
+<title>راه‌انداز Cloudflare Worker + D1</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ═══════════ هدر ═══════════ -->
+<header class="topbar">
+  <div class="wrap topbar-in">
+    <div class="brand">
+      <span class="logo">⚙️</span>
+      <div>
+        <h1>راه‌انداز Cloudflare Worker + D1</h1>
+        <p class="sub">ساخت و بروزرسانی ورکر و دیتابیس — مستقیم از مرورگر</p>
+      </div>
+    </div>
+    <div id="connChip" class="chip chip-off" onclick="UI.openConn()">● وصل نیست</div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ═══════════ کارت اتصال ═══════════ -->
+  <section id="connCard" class="card">
+    <h2>🔌 اتصال به Cloudflare</h2>
+    <p class="hint">پل، توکن و اکانت — اطلاعات حساس فقط در همین تب مرورگر می‌ماند (sessionStorage) و هرگز ذخیره یا ارسال نمی‌شود.</p>
+
+    <div class="field">
+      <label>آدرس پل (Bridge)</label>
+      <div class="row">
+        <input id="fBridge" type="url" inputmode="url" dir="ltr" placeholder="https://cf-bridge.yourname.workers.dev">
+        <button class="btn btn-sm" type="button" onclick="Bridge.openModal()">نصب پل</button>
+      </div>
+      <p class="hint" id="bridgeHint"></p>
+    </div>
+
+    <div class="field">
+      <label>API Token کلادفلر</label>
+      <input id="fToken" type="password" dir="ltr" autocomplete="off" placeholder="توکن با دسترسی Workers Scripts + D1">
+    </div>
+
+    <div class="field">
+      <label>Account ID</label>
+      <div class="row">
+        <input id="fAccount" dir="ltr" placeholder="خودکار پر می‌شود، یا دستی وارد کن">
+      </div>
+    </div>
+
+    <button id="btnConnect" class="btn btn-primary btn-block" onclick="Conn.connect()">اتصال و راستی‌آزمایی</button>
+    <div id="connMsg" class="msg"></div>
+  </section>
+
+  <!-- ═══════════ تب‌ها ═══════════ -->
+  <nav class="tabs" id="tabsNav" hidden>
+    <button class="tab active" data-tab="setup" onclick="UI.tab('setup')">🚀 راه‌اندازی جدید</button>
+    <button class="tab" data-tab="update" onclick="UI.tab('update')">🔄 بروزرسانی</button>
+    <button class="tab" data-tab="webhook" onclick="UI.tab('webhook')">🪝 وب‌هوک</button>
+  </nav>
+
+  <!-- ═══════════ تب ۱: راه‌اندازی جدید ═══════════ -->
+  <section id="tab-setup" class="tabpanel">
+
+    <div class="card">
+      <h2>۱) مشخصات پروژه</h2>
+      <div class="grid3">
+        <div class="field">
+          <label>نام Worker</label>
+          <input id="sWorker" dir="ltr" placeholder="my-bot">
+          <p class="hint">حروف انگلیسی، عدد، خط تیره</p>
+        </div>
+        <div class="field">
+          <label>نام دیتابیس D1</label>
+          <input id="sD1" dir="ltr" placeholder="my-db">
+        </div>
+        <div class="field">
+          <label>نام اتصال (Binding)</label>
+          <input id="sBinding" dir="ltr" placeholder="DB" value="DB">
+          <p class="hint">همان نامی که در کد با <code>env.DB</code> صدا می‌زنی</p>
+        </div>
+      </div>
+      <div class="row gap">
+        <button class="btn" onclick="Setup.loadDefaults()">↩︎ مقادیر قبلی من</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>۲) اسکیمای دیتابیس (schema.sql)</h2>
+      <p class="hint">فایل SQL را انتخاب کن، یا متنش را بچسبان، یا از ریپو بگیر. اگر پروژه‌ات دیتابیس نمی‌خواهد، خالی بگذار و از این مرحله رد شو.</p>
+      <div class="source">
+        <div class="row gap">
+          <label class="btn btn-file">📁 انتخاب فایل SQL<input type="file" id="sSchemaFile" accept=".sql,.txt" hidden></label>
+          <button class="btn" onclick="Source.fetchRepo('schema')">☁️ دریافت از ریپو (setup.sql)</button>
+          <span class="badge" id="sSchemaName">—</span>
+        </div>
+        <textarea id="sSchemaText" dir="ltr" rows="6" placeholder="-- CREATE TABLE ..."></textarea>
+      </div>
+      <div class="row gap">
+        <button class="btn btn-ok" onclick="Setup.stepD1()">🟢 ساخت D1 + اجرای اسکیما</button>
+      </div>
+      <div class="stepmsg" id="msgD1"></div>
+    </div>
+
+    <div class="card">
+      <h2>۳) کد Worker (worker.js)</h2>
+      <p class="hint">کد باید ES Module باشد (شامل <code>export default</code>). می‌توانی فایل بدهی، بچسبانی، یا آخرین نسخه را از ریپو بگیری.</p>
+      <div class="source">
+        <div class="row gap">
+          <label class="btn btn-file">📁 انتخاب فایل JS<input type="file" id="sCodeFile" accept=".js,.mjs,.txt" hidden></label>
+          <button class="btn" onclick="Source.fetchRepo('worker')">☁️ دریافت از ریپو (worker.js)</button>
+          <span class="badge" id="sCodeName">—</span>
+        </div>
+        <textarea id="sCodeText" dir="ltr" rows="8" placeholder="export default { fetch(req, env) { ... } }"></textarea>
+      </div>
+      <details class="adv">
+        <summary>متغیرها و Secretها (اختیاری)</summary>
+        <div id="sVars" class="vars"></div>
+        <button class="btn btn-sm" onclick="Vars.add('sVars')">+ افزودن متغیر</button>
+        <p class="hint">🔒 = Secret (مقدارش بعد از ذخیره خوانده نمی‌شود). BOT_TOKEN و ADMIN_IDS رایج‌ترین‌ها هستند.</p>
+      </details>
+      <div class="row gap">
+        <button class="btn btn-ok" onclick="Setup.stepDeploy()">🟢 آپلود و دیپلوی Worker</button>
+      </div>
+      <div class="stepmsg" id="msgDeploy"></div>
+    </div>
+
+    <div class="card">
+      <h2>۴) وب‌هوک (اختیاری)</h2>
+      <div class="grid2">
+        <div class="field">
+          <label>پلتفرم</label>
+          <select id="sHookPlatform">
+            <option value="bale">بله (Bale)</option>
+            <option value="telegram">تلگرام (Telegram)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>توکن ربات</label>
+          <input id="sHookToken" type="password" dir="ltr" autocomplete="off" placeholder="123456:ABC-...">
+        </div>
+      </div>
+      <div class="row gap">
+        <button class="btn" onclick="Setup.stepWebhook()">🪝 تنظیم وب‌هوک</button>
+        <button class="btn btn-primary" onclick="Setup.runAll()">▶️ اجرای خودکار همه مراحل</button>
+      </div>
+      <div class="stepmsg" id="msgHook"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════ تب ۲: بروزرسانی ═══════════ -->
+  <section id="tab-update" class="tabpanel" hidden>
+
+    <div class="card">
+      <h2>حالت بروزرسانی را انتخاب کن</h2>
+      <div class="seg" role="tablist">
+        <button class="segbtn active" data-seg="uWorker" onclick="UI.seg('uWorker')">کد Worker</button>
+        <button class="segbtn" data-seg="uD1" onclick="UI.seg('uD1')">دیتابیس D1</button>
+        <button class="segbtn" data-seg="uVars" onclick="UI.seg('uVars')">متغیرها / Bindings</button>
+      </div>
+    </div>
+
+    <!-- ── بروزرسانی کد ورکر ── -->
+    <div id="seg-uWorker" class="card segpanel">
+      <h2>🔄 بروزرسانی کد Worker</h2>
+      <div class="field">
+        <label>Worker موجود</label>
+        <div class="row">
+          <input id="uWorkerName" dir="ltr" list="workerList" placeholder="نام ورکر یا از لیست انتخاب کن">
+          <datalist id="workerList"></datalist>
+          <button class="btn btn-sm" onclick="Update.listWorkers()">دریافت لیست</button>
+        </div>
+      </div>
+      <div class="source">
+        <div class="row gap">
+          <label class="btn btn-file">📁 فایل JS<input type="file" id="uCodeFile" accept=".js,.mjs,.txt" hidden></label>
+          <button class="btn" onclick="Source.fetchRepo('workerU')">☁️ دریافت از ریپو (worker.js)</button>
+          <span class="badge" id="uCodeName">—</span>
+        </div>
+        <textarea id="uCodeText" dir="ltr" rows="8" placeholder="export default { fetch(req, env) { ... } }"></textarea>
+      </div>
+      <details class="adv">
+        <summary>متغیرها و Secretها (اختیاری — فقط اگر بخواهی عوض شوند)</summary>
+        <div id="uVars" class="vars"></div>
+        <button class="btn btn-sm" onclick="Vars.add('uVars')">+ افزودن</button>
+        <p class="hint">خالی بگذاری = متغیرها و Secretهای قبلی دست‌نخورده می‌مانند.</p>
+      </details>
+      <label class="check"><input type="checkbox" id="uKeep" checked> حفظ Bindings و Secretهای قبلی (پیشنهادی)</label>
+      <div class="row gap">
+        <button class="btn btn-ok" onclick="Update.deploy()">🟢 بروزرسانی Worker</button>
+      </div>
+      <div class="stepmsg" id="msgUWorker"></div>
+    </div>
+
+    <!-- ── بروزرسانی D1 ── -->
+    <div id="seg-uD1" class="card segpanel" hidden>
+      <h2>🗄️ اجرای SQL روی D1</h2>
+      <div class="field">
+        <label>دیتابیس</label>
+        <div class="row">
+          <select id="uD1Select"></select>
+          <button class="btn btn-sm" onclick="Update.listD1()">دریافت لیست</button>
+        </div>
+      </div>
+      <div class="source">
+        <div class="row gap">
+          <label class="btn btn-file">📁 فایل SQL<input type="file" id="uSqlFile" accept=".sql,.txt" hidden></label>
+          <button class="btn" onclick="Source.fetchRepo('sqlU')">☁️ دریافت از ریپو (setup.sql)</button>
+          <span class="badge" id="uSqlName">—</span>
+        </div>
+        <textarea id="uSqlText" dir="ltr" rows="8" placeholder="UPDATE ... ; ALTER TABLE ... ;"></textarea>
+      </div>
+      <p class="hint warn">⚠️ اگر جدول قبلاً ساخته شده باشد، CREATE دوباره خطا می‌دهد (مگر IF NOT EXISTS داشته باشد).</p>
+      <div class="row gap">
+        <button class="btn btn-ok" onclick="Update.runSql()">🟢 اجرای SQL</button>
+      </div>
+      <div class="stepmsg" id="msgUD1"></div>
+    </div>
+
+    <!-- ── مشاهده/ویرایش Bindings ── -->
+    <div id="seg-uVars" class="card segpanel" hidden>
+      <h2>🧩 متغیرها و Bindings فعلی</h2>
+      <div class="field">
+        <label>Worker</label>
+        <div class="row">
+          <input id="uVarsWorker" dir="ltr" list="workerList" placeholder="نام ورکر">
+          <button class="btn btn-sm" onclick="Update.showBindings()">مشاهده</button>
+        </div>
+      </div>
+      <div id="bindingsView" class="bindings"></div>
+      <details class="adv" id="varsEditWrap" hidden>
+        <summary>ویرایش و ذخیره (بدون تغییر کد)</summary>
+        <div id="uVarsQuick" class="vars"></div>
+        <button class="btn btn-sm" onclick="Vars.add('uVarsQuick')">+ افزودن متغیر/Secret</button>
+        <p class="hint">مقادیر جدید جایگزین هم‌نام‌ها می‌شوند؛ سایر Bindings (D1/KV/…) حفظ می‌شوند.</p>
+        <div class="row gap"><button class="btn btn-ok" onclick="Update.saveBindings()">🟢 ذخیره متغیرها</button></div>
+      </details>
+      <div class="stepmsg" id="msgUVars"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════ تب ۳: وب‌هوک ═══════════ -->
+  <section id="tab-webhook" class="tabpanel" hidden>
+    <div class="card">
+      <h2>🪝 تنظیم وب‌هوک ربات</h2>
+      <p class="hint">آدرس وب‌هوک = آدرس ورکر روی workers.dev + مسیر. اگر ورکر هنوز آدرس ندارد، اول دیپلویش کن.</p>
+      <div class="grid2">
+        <div class="field">
+          <label>پلتفرم</label>
+          <select id="wPlatform">
+            <option value="bale">بله (Bale)</option>
+            <option value="telegram">تلگرام (Telegram)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>توکن ربات</label>
+          <input id="wBotToken" type="password" dir="ltr" autocomplete="off" placeholder="123456:ABC-...">
+        </div>
+        <div class="field">
+          <label>آدرس ورکر</label>
+          <input id="wWorkerUrl" dir="ltr" inputmode="url" placeholder="https://my-bot.xxx.workers.dev">
+          <p class="hint" id="wUrlHint"></p>
+        </div>
+        <div class="field">
+          <label>مسیر وب‌هوک</label>
+          <input id="wPath" dir="ltr" value="/webhook">
+        </div>
+      </div>
+      <div class="row gap">
+        <button class="btn btn-ok" onclick="Webhook.set()">🪝 تنظیم وب‌هوک</button>
+        <button class="btn" onclick="Webhook.info()">📋 وضعیت فعلی وب‌هوک</button>
+      </div>
+      <div class="stepmsg" id="msgWebhook"></div>
+      <details class="adv" id="hookFallback" hidden>
+        <summary>روش دستی (اگر درخواست مستقیم از مرورگر رد شد)</summary>
+        <p class="hint">این دستور را در Termux یا کامپیوتر اجرا کن:</p>
+        <div class="row"><textarea id="hookCmd" dir="ltr" rows="3" readonly></textarea><button class="btn btn-sm" onclick="UI.copy('hookCmd')">کپی</button></div>
+      </details>
+    </div>
+  </section>
+
+  <!-- ═══════════ گزارش زنده ═══════════ -->
+  <section class="card" id="logCard" hidden>
+    <h2>📜 گزارش اجرا</h2>
+    <div id="log" class="log" dir="rtl"></div>
+    <div class="row gap"><button class="btn btn-sm" onclick="Log.clear()">پاک کردن</button></div>
+  </section>
+
+  <footer class="foot">
+    <p>
+      <a href="https://github.com/Alireza123456w6w/simple_cloudfire_worker_changer" target="_blank" rel="noopener">ریپوی گیت‌هاب ⭳</a>
+      · ابزار عمومی و متن‌باز · توکن‌ها فقط در مرورگر خودت می‌مانند
+    </p>
+  </footer>
+</main>
+
+<!-- ═══════════ مودال نصب پل ═══════════ -->
+<div id="bridgeModal" class="modal" hidden>
+  <div class="modal-box">
+    <button class="modal-x" onclick="Bridge.closeModal()">✕</button>
+    <h2>🌉 نصب پل — فقط یک بار</h2>
+    <p class="hint">
+      مرورگر اجازه ندارد مستقیم به <code>api.cloudflare.com</code> وصل شود (CORS کلادفلر بسته است).
+      پل یک ورکر کوچک و خلوت است که فقط درخواست‌های خودت را به کلادفلر رد می‌کند و <b>هیچ چیزی ذخیره نمی‌کند</b>.
+      بعد از این نصب یک‌باره، همه‌چیز از همین صفحه با موبایل انجام می‌شود.
+    </p>
+
+    <div class="field">
+      <label>۱) API Token (برای ساختن پل لازم است)</label>
+      <input id="bToken" type="password" dir="ltr" autocomplete="off" placeholder="همان توکنی که برای اتصال می‌دهی">
+    </div>
+    <div class="field">
+      <label>۲) Account ID</label>
+      <input id="bAccount" dir="ltr" placeholder="از داشبورد کلادفلر">
+      <p class="hint">Account ID را از نوار آدرس داشبورد کپی کن</p>
+    </div>
+
+    <div class="field">
+      <label>۳) این دستور را کپی و در Termux / کامپیوتر اجرا کن</label>
+      <div class="row">
+        <textarea id="bCmd" dir="ltr" rows="4" readonly></textarea>
+        <button class="btn btn-sm" onclick="UI.copy('bCmd')">کپی</button>
+      </div>
+      <p class="hint">خروجی باید <code>"success":true</code> بدهد و آخرش آدرس پل را چاپ کند.</p>
+    </div>
+
+    <div class="field">
+      <label>۴) آدرس پل که چاپ شد را اینجا بگذار</label>
+      <input id="bUrl" type="url" dir="ltr" inputmode="url" placeholder="https://cf-bridge.xxx.workers.dev">
+    </div>
+
+    <button class="btn btn-primary btn-block" onclick="Bridge.testAndSave()">تست و ذخیره پل</button>
+    <div id="bridgeMsg" class="msg"></div>
+
+    <details class="adv">
+      <summary>پل چطور کار می‌کند؟ (شفاف و کم‌حجم)</summary>
+      <p class="hint">پل فقط دو کار می‌کند: هدرهای CORS را اضافه می‌کند و درخواست را به کلادفلر می‌فرستد. توکن از داخلش عبور می‌کند ولی ذخیره نمی‌شود — کد کاملش:</p>
+      <div class="row"><textarea id="bCode" dir="ltr" rows="10" readonly></textarea><button class="btn btn-sm" onclick="UI.copy('bCode')">کپی کد پل</button></div>
+    </details>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
