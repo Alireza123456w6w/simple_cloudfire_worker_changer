@@ -1,0 +1,18 @@
+CREATE TABLE IF NOT EXISTS services (id INTEGER PRIMARY KEY AUTOINCREMENT, service_key TEXT UNIQUE NOT NULL, title TEXT NOT NULL, price_text TEXT, prompt_text TEXT NOT NULL, sort_order INTEGER DEFAULT 0, active INTEGER DEFAULT 1, updatable INTEGER DEFAULT 0, start_code TEXT);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_services_start_code ON services(start_code) WHERE start_code IS NOT NULL;
+CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, username TEXT, service_key TEXT, description TEXT, price_final TEXT, amount INTEGER, tracking_code TEXT, receipt_file_id TEXT, card_id INTEGER, desc_extra INTEGER DEFAULT 0, admin_asked INTEGER DEFAULT 0, delivered_at TEXT, kind TEXT DEFAULT 'buy', parent_order_id INTEGER, status TEXT DEFAULT 'awaiting_description', created_at TEXT DEFAULT (datetime('now')));
+CREATE INDEX IF NOT EXISTS idx_orders_user_status ON orders(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_orders_parent ON orders(parent_order_id);
+CREATE TABLE IF NOT EXISTS reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER UNIQUE NOT NULL, user_id INTEGER NOT NULL, service_key TEXT, stars INTEGER NOT NULL, created_at TEXT DEFAULT (datetime('now')));
+CREATE INDEX IF NOT EXISTS idx_reviews_service ON reviews(service_key);
+CREATE TABLE IF NOT EXISTS cards (id INTEGER PRIMARY KEY AUTOINCREMENT, card_number TEXT NOT NULL, card_holder TEXT NOT NULL, bank TEXT, active INTEGER DEFAULT 1, usage_count INTEGER DEFAULT 0, last_used_at TEXT);
+CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT, balance INTEGER DEFAULT 0, state TEXT, created_at TEXT DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS transactions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, username TEXT, amount INTEGER NOT NULL, kind TEXT NOT NULL, order_id INTEGER, tracking_code TEXT, receipt_file_id TEXT, card_id INTEGER, status TEXT DEFAULT 'awaiting_receipt', created_at TEXT DEFAULT (datetime('now')));
+CREATE INDEX IF NOT EXISTS idx_tx_user_status ON transactions(user_id, status);
+CREATE TABLE IF NOT EXISTS seen_updates (update_id INTEGER PRIMARY KEY, created_at TEXT DEFAULT (datetime('now')));
+INSERT OR IGNORE INTO services (service_key, title, price_text, prompt_text, sort_order, updatable) VALUES ('create_app', '📱 ساخت اپلیکیشن اختصاصی', 'قیمت پایه ۳۰۰ هزار تومان', 'لطفاً بفرمایید این اپلیکیشن برای چه چیزی هست؟ بصورت کامل و دقیق بگویید.', 1, 0);
+INSERT OR IGNORE INTO services (service_key, title, price_text, prompt_text, sort_order, updatable) VALUES ('create_website', '🌐 ساخت وبسایت اختصاصی', NULL, 'لطفاً نوع و امکانات وبسایت مورد نظرتون رو کامل توضیح بدید.', 2, 0);
+INSERT OR IGNORE INTO services (service_key, title, price_text, prompt_text, sort_order, updatable) VALUES ('activate', '⚙️ فعال‌سازی سایت یا اپلیکیشن', NULL, 'لطفاً بفرمایید کدوم سایت/اپلیکیشن رو می‌خواید فعال کنیم و لینکش رو بفرستید.', 3, 0);
+INSERT OR IGNORE INTO services (service_key, title, price_text, prompt_text, sort_order, updatable) VALUES ('mc_plugin', '🧩 ساخت پلاگین ماینکرافت', NULL, 'لطفاً امکانات پلاگین مورد نظرتون رو کامل توضیح بدید.', 4, 1);
+INSERT OR IGNORE INTO services (service_key, title, price_text, prompt_text, sort_order, updatable) VALUES ('mc_mod', '⛏️ ساخت مود ماینکرافت بدراک', NULL, 'لطفاً امکانات مود مورد نظرتون رو کامل توضیح بدید.', 5, 1);
+INSERT INTO cards (card_number, card_holder, bank) SELECT * FROM (SELECT '6037990000000000' AS card_number, 'نام صاحب کارت' AS card_holder, 'بانک' AS bank) WHERE NOT EXISTS (SELECT 1 FROM cards);

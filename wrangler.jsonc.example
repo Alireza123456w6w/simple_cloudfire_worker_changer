@@ -1,0 +1,32 @@
+// ⚠️ این فایل فقط برای روش پیشرفته «اتصال ریپو به گیت‌هاب» (Workers Builds) است.
+// پنل دیپلوی خودکار این ریپو به این فایل نیازی ندارد — می‌توانی کلاً نادیده‌اش بگیری.
+//
+// راهنمای استفاده:
+//   ۱) نام این فایل را به wrangler.jsonc تغییر بده
+//   ۲) database_id دیتابیس D1 خودت را جایگزین کن
+//      (داشبورد Cloudflare → Storage & Databases → D1 → دیتابیس تو → ID)
+//   ۳) compatibility_date را همان مقدار ورکر فعلی‌ات بگذار
+//      (بعد از یک دیپلوی موفق با پنل، در نتیجه‌ای که نشان می‌دهد compatDate آمده)
+//   ۴) در Cloudflare: Workers & Pages → Create → Import a repository → این ریپو را انتخاب کن
+//
+// ⚠️ هشدار مهم: اگر با wrangler دیپلوی کنی، Variableهایی که در «vars» نیستند
+//     از ورکر حذف می‌شوند — همه Variableها را همین‌جا نگه دار.
+//     (Secretها مثل BOT_TOKEN و WALLET_TOKEN با دیپلوی wrangler حذف نمی‌شوند.)
+{
+  "name": "balebot",
+  "main": "worker.js",
+  "compatibility_date": "2025-09-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "balebot",
+      "database_id": "PUT-YOUR-D1-DATABASE-ID-HERE"
+    }
+  ],
+  "vars": {
+    "PLATFORM": "bale",
+    "ADMIN_CHAT_ID": "PUT-YOUR-ADMIN-CHAT-ID",
+    "CHANNEL_HANDLE": "@o_p_Products",
+    "SITE_URL": "https://offers-pishnahadat.vercel.app"
+  }
+}
