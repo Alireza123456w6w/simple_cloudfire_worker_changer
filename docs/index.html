@@ -48,9 +48,9 @@
     </div>
 
     <div class="field">
-      <label>Account ID</label>
+      <label>Account ID (اختیاری)</label>
       <div class="row">
-        <input id="fAccount" dir="ltr" placeholder="خودکار پر می‌شود، یا دستی وارد کن">
+        <input id="fAccount" dir="ltr" placeholder="خالی بگذار — خودکار از توکن تشخیص داده می‌شود">
       </div>
     </div>
 
@@ -304,39 +304,62 @@
 <div id="bridgeModal" class="modal" hidden>
   <div class="modal-box">
     <button class="modal-x" onclick="Bridge.closeModal()">✕</button>
-    <h2>🌉 نصب پل — فقط یک بار</h2>
+    <h2>🌉 نصب پل — فقط یک بار، بدون ترمینال</h2>
     <p class="hint">
-      مرورگر اجازه ندارد مستقیم به <code>api.cloudflare.com</code> وصل شود (CORS کلادفلر بسته است).
-      پل یک ورکر کوچک و خلوت است که فقط درخواست‌های خودت را به کلادفلر رد می‌کند و <b>هیچ چیزی ذخیره نمی‌کند</b>.
-      بعد از این نصب یک‌باره، همه‌چیز از همین صفحه با موبایل انجام می‌شود.
+      <b>چرا پل؟</b> سایت Pages سرور ندارد و <code>api.cloudflare.com</code> هم اجازه اتصال مستقیم مرورگر را نمی‌دهد (CORS بسته است).
+      پل یک ورکر کوچک در <b>خود اکانت کلادفلر تو</b> است که فقط درخواست‌های خودت را رد می‌کند — هیچ چیزی ذخیره نمی‌کند و کدش کاملاً شفاف است.
+      این نصب فقط یک بار است؛ بعدش همه‌چیز از همین صفحه با موبایل انجام می‌شود.
     </p>
 
     <div class="field">
-      <label>۱) API Token (برای ساختن پل لازم است)</label>
-      <input id="bToken" type="password" dir="ltr" autocomplete="off" placeholder="همان توکنی که برای اتصال می‌دهی">
-    </div>
-    <div class="field">
-      <label>۲) Account ID</label>
-      <input id="bAccount" dir="ltr" placeholder="از داشبورد کلادفلر">
-      <p class="hint">Account ID را از نوار آدرس داشبورد کپی کن</p>
-    </div>
-
-    <div class="field">
-      <label>۳) این دستور را کپی و در Termux / کامپیوتر اجرا کن</label>
+      <label>۱) کد پل را کپی کن</label>
       <div class="row">
-        <textarea id="bCmd" dir="ltr" rows="4" readonly></textarea>
-        <button class="btn btn-sm" onclick="UI.copy('bCmd')">کپی</button>
+        <button class="btn btn-primary" type="button" onclick="Bridge.copyCode()">📋 کپی کد پل</button>
+        <span class="badge">~۴۰ خط JavaScript</span>
       </div>
-      <p class="hint">خروجی باید <code>"success":true</code> بدهد و آخرش آدرس پل را چاپ کند.</p>
     </div>
 
     <div class="field">
-      <label>۴) آدرس پل که چاپ شد را اینجا بگذار</label>
-      <input id="bUrl" type="url" dir="ltr" inputmode="url" placeholder="https://cf-bridge.xxx.workers.dev">
+      <label>۲) در داشبورد کلادفلر یک Worker بساز و کد را جایگزین کن</label>
+      <p class="hint">
+        <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">باز کردن داشبورد ↗</a>
+        ← <b>Workers &amp; Pages</b> ← <b>Create</b> ← قالب Hello World ← Deploy ← دکمه <b>Edit code</b>
+        ← همه‌چیز را پاک کن و کد کپی‌شده را بچسبان ← <b>Deploy</b>. بدون Account ID و بدون Termux.
+      </p>
+    </div>
+
+    <div class="field">
+      <label>۳) آدرس ورکر را اینجا بچسبان</label>
+      <div class="row">
+        <input id="bUrl" type="url" dir="ltr" inputmode="url" placeholder="https://cf-bridge.xxx.workers.dev">
+        <button class="btn btn-sm" type="button" onclick="Bridge.openBridge()">↗︎ باز کردن</button>
+      </div>
+      <p class="hint">میان‌بر: آدرس پل را در مرورگر باز کن — خودش برمی‌گردد به همین صفحه و آدرس را پر می‌کند.</p>
     </div>
 
     <button class="btn btn-primary btn-block" onclick="Bridge.testAndSave()">تست و ذخیره پل</button>
     <div id="bridgeMsg" class="msg"></div>
+
+    <details class="adv">
+      <summary>روش جایگزین: Termux / کامپیوتر با curl (توکن + Account ID لازم دارد)</summary>
+      <div class="field">
+        <label>API Token (برای ساختن پل لازم است)</label>
+        <input id="bToken" type="password" dir="ltr" autocomplete="off" placeholder="همان توکنی که برای اتصال می‌دهی">
+      </div>
+      <div class="field">
+        <label>Account ID</label>
+        <input id="bAccount" dir="ltr" placeholder="از نوار آدرس داشبورد کلادفلر">
+        <p class="hint">Account ID را از نوار آدرس داشبورد کپی کن</p>
+      </div>
+      <div class="field">
+        <label>این دستور را کپی و در Termux / کامپیوتر اجرا کن</label>
+        <div class="row">
+          <textarea id="bCmd" dir="ltr" rows="4" readonly></textarea>
+          <button class="btn btn-sm" onclick="UI.copy('bCmd')">کپی</button>
+        </div>
+        <p class="hint">خروجی باید <code>"success":true</code> بدهد و آخرش آدرس پل را چاپ کند.</p>
+      </div>
+    </details>
 
     <details class="adv">
       <summary>پل چطور کار می‌کند؟ (شفاف و کم‌حجم)</summary>

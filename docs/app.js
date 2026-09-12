@@ -10,9 +10,11 @@ const BRIDGE_CODE = [
   '/**',
   ' * CF Bridge — پل مرورگر به Cloudflare API',
   ' * فقط درخواست‌های مسیر /cf/... را به api.cloudflare.com/client/v4 رد می‌کند.',
+  ' * باز کردن آدرس پل در مرورگر → برگشت خودکار به پنل با پل آماده.',
   ' * هیچ داده‌ای ذخیره یا لاگ نمی‌شود. اختیاری: Secret با نام BRIDGE_KEY بسازی،',
   ' * آنگاه هر درخواست باید هدر X-Bridge-Key با همان مقدار بفرستد.',
   ' */',
+  'const PANEL = "https://alireza123456w6w.github.io/simple_cloudfire_worker_changer/";',
   'const CORS_HEADERS = {',
   '  "Access-Control-Allow-Origin": "*",',
   '  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",',
@@ -33,7 +35,10 @@ const BRIDGE_CODE = [
   '      return new Response(null, { status: 204, headers: CORS_HEADERS });',
   '    }',
   '    const url = new URL(request.url);',
-  '    if (url.pathname === "/") {',
+  '    if (url.pathname === "/" && request.method === "GET") {',
+  '      return Response.redirect(PANEL + "?bridge=" + encodeURIComponent(url.origin), 302);',
+  '    }',
+  '    if (url.pathname === "/ping") {',
   '      return json({ ok: true, bridge: "cf-bridge", usage: "/cf/<cloudflare-api-path>" });',
   '    }',
   '    if (env && env.BRIDGE_KEY) {',
@@ -337,7 +342,7 @@ const Conn = {
       if (!S.accountId) needsAccountId = true;
       if (needsAccountId && !S.accountId) {
         msg.className = "msg err";
-        msg.textContent = "توکن معتبر است ولی Account ID لازم است — از نوار آدرس داشبورد کلادفلر کپی‌اش کن و دوباره بزن.";
+        msg.textContent = "توکن معتبر است ولی تشخیص خودکار اکانت نشد — یا Account ID را از نوار آدرس داشبورد کپی و دوباره «اتصال» را بزن، یا توکن را با دسترسی Account Settings Read بساز.";
         $("fAccount").focus();
         return;
       }
@@ -375,10 +380,21 @@ const Bridge = {
     $("bToken").value = S.token || $("fToken").value || "";
     $("bAccount").value = S.accountId || $("fAccount").value || "";
     $("bCode").value = BRIDGE_CODE;
+    $("bUrl").value = S.bridge || $("fBridge").value || "";
     Bridge.genCommand();
     $("bridgeModal").hidden = false;
   },
   closeModal() { $("bridgeModal").hidden = true; },
+  async copyCode() {
+    const ok = await copyToClipboard(BRIDGE_CODE);
+    toast(ok ? "کد پل کپی شد ✅ حالا در داشبورد کلادفلر بچسبان" : "کپی نشد — از کادر پایین دستی کپی کن");
+    if (!ok) { $("bCode").scrollIntoView({ behavior: "smooth", block: "center" }); $("bCode").focus(); }
+  },
+  openBridge() {
+    let url = ($("bUrl").value || "").trim().replace(/\/+$/, "");
+    if (!/^https:\/\/.+/.test(url)) { toast("اول آدرس پل را وارد کن"); return; }
+    window.open(url + "/ping", "_blank", "noopener");
+  },
   genCommand() {
     const t = ($("bToken").value || "").trim();
     const a = ($("bAccount").value || "").trim();
@@ -411,31 +427,37 @@ const Bridge = {
     let url = ($("bUrl").value || "").trim().replace(/\/+$/, "");
     if (!/^https:\/\/.+/.test(url)) {
       msg.className = "msg err";
-      msg.textContent = "آدرس پل باید کامل و با https:// باشد — همان خطی که دستور چاپ کرد.";
+      msg.textContent = "آدرس پل باید کامل و با https:// باشد — مثل https://cf-bridge.name.workers.dev";
       return;
     }
     msg.className = "msg"; msg.textContent = "در حال تست پل…";
     try {
+      const probe = ($("bToken").value || "").trim() || S.token || ($("fToken").value || "").trim() || "invalid-probe";
       const res = await fetch(url + "/cf/user/tokens/verify", {
-        headers: { "Authorization": "Bearer " + (($("bToken").value || "").trim() || S.token || "x") },
+        headers: { "Authorization": "Bearer " + probe },
         signal: AbortSignal.timeout(20000),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.success !== true) {
-        const em = data && data.errors && data.errors[0] ? data.errors[0].message : ("HTTP " + res.status);
+      // پل سالم = پاسخ، شکل پاسخ API کلادفلر است (حتی اگر خود توکن رد شده باشد)
+      const looksCf = data && (typeof data.success === "boolean" || Array.isArray(data.errors));
+      if (!looksCf) {
         msg.className = "msg err";
-        msg.textContent = "پل پاسخ داد ولی توکن رد شد: " + em + " — اگر توکن تازه ساخته‌ای چند لحظه صبر کن و دوباره بزن.";
+        msg.textContent = "این آدرس شبیه پل پاسخ نمی‌دهد — آدرس workers.dev ورکر را کامل و درست بچسبان.";
         return;
       }
       localStorage.setItem(LS.bridge, url);
       S.bridge = url;
       $("fBridge").value = url;
+      const tokenOk = res.ok && data.success === true;
       msg.className = "msg ok";
-      msg.textContent = "پل وصل و ذخیره شد ✅ — حالا در کارت اتصال، توکن را وارد و «اتصال» را بزن.";
+      msg.textContent = tokenOk
+        ? "پل و توکن هر دو سالم ✅ — «اتصال» را در کارت اتصال بزن."
+        : "پل نصب و سالم است ✅ — حالا فقط توکن را در کارت اتصال وارد کن و «اتصال» را بزن.";
       $("bridgeHint").textContent = "پل نصب و تست شده: " + url;
       Bridge.closeModal();
       UI.openConn();
       toast("پل آماده شد 🎉");
+      if (!$("fToken").value) $("fToken").focus();
     } catch (e) {
       msg.className = "msg err";
       msg.textContent = "به پل دسترسی نبود — مطمئن شو دستور را کامل اجرا کرده‌ای و آدرس را درست چسبانده‌ای. (" + e.message + ")";
@@ -1078,13 +1100,29 @@ const Webhook = {
 
 /* ═══════════ شروع ═══════════ */
 (function init() {
+  // میان‌بر از خود پل: باز کردن آدرس پل در مرورگر → برگشت به پنل با ?bridge=...
+  // فقط آدرس پل در فیلد پر می‌شود (ذخیره/اتصال نیازمند تست و کلیک خود کاربر است).
+  let qbBridge = "";
+  try {
+    const q = new URLSearchParams(location.search);
+    qbBridge = (q.get("bridge") || "").trim().replace(/\/+$/, "");
+    if (qbBridge && !/^https:\/\/[a-z0-9.-]+/i.test(qbBridge)) qbBridge = "";
+    if (q.get("bridge")) history.replaceState(null, "", location.pathname);
+  } catch (e) { /* بی‌خطر */ }
+
   // پیش‌فرض‌ها از حافظه
-  const bridge = localStorage.getItem(LS.bridge) || "";
+  const savedBridge = localStorage.getItem(LS.bridge) || "";
+  const bridge = qbBridge || savedBridge;
   $("fBridge").value = bridge;
   S.bridge = bridge;
   $("fAccount").value = localStorage.getItem(LS.account) || "";
   const savedToken = sessionStorage.getItem("cfw.token") || "";
   if (savedToken) { $("fToken").value = savedToken; S.token = savedToken; }
+
+  if (qbBridge) {
+    $("bridgeHint").textContent = "پل از لینک آماده شد: " + qbBridge + " — تستش کن یا مستقیم توکن را بده و «اتصال» را بزن.";
+    setTimeout(() => toast("آدرس پل خودکار پر شد ✅ — حالا توکن را وارد کن"), 300);
+  }
 
   // تنظیمات ریپو (فیلدهای پنهان در ذخیره)
   let r = null;
@@ -1110,13 +1148,16 @@ const Webhook = {
   $("fAccount").addEventListener("keydown", (e) => { if (e.key === "Enter") Conn.connect(); });
 
   UI.chip();
-  if (bridge) {
-    $("bridgeHint").textContent = "پل ذخیره‌شده: " + bridge + (savedToken ? " — توکن هم مانده، فقط «اتصال» را بزن" : "");
-  } else {
-    $("bridgeHint").textContent = "هنوز پل نداری؟ «نصب پل» — یک‌بار برای همیشه.";
+  if (!qbBridge) {
+    if (bridge) {
+      $("bridgeHint").textContent = "پل ذخیره‌شده: " + bridge + (savedToken ? " — توکن هم مانده، فقط «اتصال» را بزن" : "");
+    } else {
+      $("bridgeHint").textContent = "هنوز پل نداری؟ «نصب پل» — بدون ترمینال و بدون Account ID، فقط یک بار.";
+    }
   }
-  // اگر همه‌چیز آماده بود، خودکار وصل کن
-  if (bridge && savedToken && (localStorage.getItem(LS.account) || "")) {
+  // اگر همه‌چیز آماده بود، خودکار وصل کن — ولی فقط با پل ذخیره‌شده‌ی خود کاربر
+  // (نه با پلِ آمده از لینک: توکن نباید بدون کلیک کاربر از مسیر جدیدی رد شود)
+  if (bridge && savedToken && (localStorage.getItem(LS.account) || "") && bridge === savedBridge) {
     Conn.connect();
   }
 })();
