@@ -255,7 +255,7 @@ function chunkStatements(stmts, maxChars, maxCount) {
 const UI = {
   tab(name) {
     document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
-    ["setup", "update", "webhook"].forEach((t) => { $("tab-" + t).hidden = t !== name; });
+    ["setup", "update", "webhook", "tools"].forEach((t) => { $("tab-" + t).hidden = t !== name; });
   },
   seg(segName) {
     document.querySelectorAll("#tab-update .segbtn").forEach((b) => b.classList.toggle("active", b.dataset.seg === segName));
@@ -279,11 +279,18 @@ const Log = {
     $("logCard").hidden = false;
     const d = document.createElement("div");
     d.className = "l-" + (cls || "info");
-    d.textContent = text;
+    let stamp = "";
+    try { stamp = "[" + new Date().toLocaleTimeString("fa-IR", { hour12: false }) + "] "; } catch (e) { /* بی‌خطر */ }
+    d.textContent = stamp + text;
     $("log").appendChild(d);
+    while ($("log").children.length > 400) $("log").removeChild($("log").firstChild);
     $("log").scrollTop = $("log").scrollHeight;
   },
   step(text) { Log.add(text, "step"); },
+  async copy() {
+    const ok = await copyToClipboard($("log").innerText);
+    toast(ok ? "گزارش کپی شد ✅" : "کپی نشد");
+  },
   clear() { $("log").innerHTML = ""; $("logCard").hidden = true; },
 };
 
@@ -363,6 +370,7 @@ const Conn = {
       $("connCard").hidden = true;
       UI.chip();
       Setup.loadDefaults();
+      NameSan.refreshAll();
       Log.add("اتصال کامل شد — Account: " + S.accountId.slice(0, 8) + "…", "ok");
       if (!$("sWorker").value) $("sWorker").focus();
     } catch (e) {
@@ -567,6 +575,62 @@ const Vars = {
     return { vars: vars, secrets: secrets };
   },
 };
+/* ═══════════ پاکیزه‌سازی نام‌ها (نام Worker در کلادفلر سخت‌گیرانه است) ═══════════
+   کلادفلر برای نام Worker فقط حروف کوچک انگلیسی، عدد و خط تیره می‌پذیرد؛
+   زیرخط (_) و فاصله و حروف بزرگ/فارسی رد می‌شوند — این ماژول زنده اصلاح و هشدار می‌دهد. */
+const NameSan = {
+  FA: "۰۱۲۳۴۵۶۷۸۹", AR: "٠١٢٣٤٥٦٧٨٩",
+  normalizeWorker(raw) {
+    let s = String(raw == null ? "" : raw);
+    s = s.replace(/[۰-۹]/g, (d) => String(NameSan.FA.indexOf(d)))
+         .replace(/[٠-٩]/g, (d) => String(NameSan.AR.indexOf(d)));
+    s = s.trim().toLowerCase()
+      .replace(/[\s_]+/g, "-")
+      .replace(/[^a-z0-9-]/g, "")
+      .replace(/-{2,}/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return s.slice(0, 63);
+  },
+  reasons(raw) {
+    const s = String(raw == null ? "" : raw);
+    const out = [];
+    if (/[\u0600-\u06FF]/.test(s)) out.push("حروف فارسی/عربی حذف شدند");
+    if (/[A-Z]/.test(s)) out.push("حروف بزرگ به کوچک تبدیل شدند");
+    if (/[_\s]/.test(s)) out.push("زیرخط (_) و فاصله → خط تیره (-)");
+    if (/[۰-۹٠-٩]/.test(s)) out.push("ارقام فارسی به انگلیسی تبدیل شدند");
+    return out;
+  },
+  apply(inputId, hintId) {
+    const inp = $(inputId);
+    if (!inp) return;
+    const raw = inp.value;
+    const norm = NameSan.normalizeWorker(raw);
+    inp.value = norm;
+    const h = $(hintId);
+    if (!h) return;
+    if (!norm) {
+      h.className = "livehint warn";
+      h.textContent = raw ? "❌ هنوز نام معتبری نیست — فقط حروف کوچک انگلیسی، عدد و خط تیره (-)" : "";
+      return;
+    }
+    const rs = NameSan.reasons(raw);
+    if (rs.length) { h.className = "livehint warn"; h.textContent = "⚠️ اصلاح شد: " + rs.join(" — ") + " ← " + norm; }
+    else { h.className = "livehint ok"; h.textContent = "✅ نام معتبر است"; }
+  },
+  refresh(inputId, hintId) { NameSan.apply(inputId, hintId); },
+  refreshAll() {
+    NameSan.refresh("sWorker", "sWorkerHint");
+    NameSan.refresh("uWorkerName", "uWorkerHint");
+    NameSan.refresh("uVarsWorker", "uVarsWorkerHint");
+  },
+  live(inputId, hintId) {
+    const inp = $(inputId);
+    if (!inp) return;
+    inp.addEventListener("input", () => NameSan.apply(inputId, hintId));
+    NameSan.apply(inputId, hintId);
+  },
+};
+
 /* ═══════════ عملیات Cloudflare (هسته مشترک) ═══════════ */
 const CloudOps = {
   async ensureD1(name) {
@@ -773,6 +837,25 @@ const CloudOps = {
     const data = await res.json().catch(() => ({}));
     return { ok: res.ok && data.ok === true, data: data, status: res.status };
   },
+
+  /* نام تایپ‌شده را با کلادفلر تطبیق می‌دهد: اگر نام دقیق وجود داشت همان استفاده
+     می‌شود (ورکرهای قدیمی با زیرخط)؛ وگرنه نسخه پاکیزه‌شده امتحان می‌شود. */
+  async resolveWorkerName(typed) {
+    const exact = String(typed == null ? "" : typed).trim();
+    if (!exact) return { name: "", note: "" };
+    const norm = NameSan.normalizeWorker(exact);
+    const exists = async (n) => {
+      try {
+        const r = await cfFetch("accounts/" + S.accountId + "/workers/scripts/" + encodeURIComponent(n) + "/settings", { timeoutMs: 15000 });
+        return !!r.ok;
+      } catch (e) { return false; }
+    };
+    if (await exists(exact)) return { name: exact, note: "" };
+    if (norm && norm !== exact && (await exists(norm))) {
+      return { name: norm, note: "نام «" + exact + "» در کلادفلر مجاز نیست — ورکر موجود «" + norm + "» استفاده شد" };
+    }
+    return { name: norm || exact, note: "" };
+  },
 };
 
 /* ═══════════ تب راه‌اندازی ═══════════ */
@@ -784,6 +867,7 @@ const Setup = {
       if (d.worker && !$("sWorker").value) $("sWorker").value = d.worker;
       if (d.d1 && !$("sD1").value) $("sD1").value = d.d1;
       if (d.binding) $("sBinding").value = d.binding;
+      NameSan.refresh("sWorker", "sWorkerHint");
     }
   },
   saveDefaults() {
@@ -794,11 +878,14 @@ const Setup = {
     }));
   },
   validateNames() {
-    const w = ($("sWorker").value || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+    const w = NameSan.normalizeWorker($("sWorker").value);
     $("sWorker").value = w;
-    const d1 = ($("sD1").value || "").trim();
+    NameSan.refresh("sWorker", "sWorkerHint");
+    const d1 = ($("sD1").value || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+    $("sD1").value = d1;
     const binding = ($("sBinding").value || "").trim();
-    if (!w) throw new Error("نام Worker لازم است (حروف انگلیسی/عدد/خط تیره)");
+    if (!w) throw new Error("نام Worker لازم است — فقط حروف کوچک انگلیسی، عدد و خط تیره (-). زیرخط (_) در کلادفلر پذیرفته نمی‌شود و خودکار به خط تیره تبدیل می‌شود.");
+    if (binding && !/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(binding)) throw new Error("نام اتصال (Binding) باید یک شناسه جاوااسکریپت معتبر باشد — مثل DB");
     return { w: w, d1: d1, binding: binding };
   },
 
@@ -872,15 +959,24 @@ const Setup = {
         if (!sub) throw new Error("آدرس ورکر را وارد کن (workers.dev پیدا نشد)");
         url = "https://" + w + "." + sub + ".workers.dev";
       }
-      const hookUrl = url.replace(/\/+$/, "") + "/webhook";
-      stepMsg("msgHook", "در حال تنظیم وب‌هوک روی " + (platform === "telegram" ? "تلگرام" : "بله") + "…", "busy");
+      const path = ($("sHookPath").value || "").trim().replace(/^\/+|\/+$/g, "");
+      const hookUrl = url.replace(/\/+$/, "") + (path ? "/" + path : "");
+      stepMsg("msgHook", "در حال تنظیم وب‌هوک روی " + (platform === "telegram" ? "تلگرام" : "بله") + "…\n" + hookUrl, "busy");
       const r = await CloudOps.webhookCall(platform, token, "setWebhook", { url: hookUrl });
       if (!r.ok) {
         const d = r.data || {};
         throw new Error("پلتفرم رد کرد: " + ((d.description || (d.errors && d.errors[0] && d.errors[0].message)) || ("HTTP " + r.status)));
       }
-      stepMsg("msgHook", "وب‌هوک تنظیم شد ✅\n" + hookUrl, "ok");
+      let extra = "";
+      try {
+        const info = await CloudOps.webhookCall(platform, token, "getWebhookInfo", {});
+        const res = info.ok && info.data.result;
+        if (res && res.url === hookUrl) extra = "\n✅ بررسی شد — وب‌هوک روی پلتفرم فعال است";
+        else if (res && res.url) extra = "\n⚠️ وب‌هوک فعلی پلتفرم آدرس دیگری است: " + res.url;
+      } catch (e) { /* بررسی اختیاری */ }
+      stepMsg("msgHook", "وب‌هوک تنظیم شد ✅\n" + hookUrl + extra, "ok");
       Log.step("🪝 وب‌هوک تنظیم شد → " + hookUrl);
+      if (!$("wWorkerUrl").value) $("wWorkerUrl").value = url;
       return true;
     } catch (e) {
       if (e.name === "TypeError") {
@@ -935,7 +1031,7 @@ const Update = {
       dl.innerHTML = "";
       names.forEach((n) => { const o = document.createElement("option"); o.value = n; dl.appendChild(o); });
       // چیپ‌های قابل‌کلیک — در همه مرورگرها دیده می‌شوند
-      ["workerPick", "workerPick2"].forEach((cid) => {
+      ["workerPick", "workerPick2", "workerPick3"].forEach((cid) => {
         const c = $(cid);
         if (!c) return;
         c.innerHTML = "";
@@ -954,6 +1050,8 @@ const Update = {
           b.onclick = () => {
             $("uWorkerName").value = n;
             if ($("uVarsWorker")) $("uVarsWorker").value = n;
+            if ($("tWorker")) $("tWorker").value = n;
+            NameSan.refreshAll();
             toast("انتخاب شد: " + n + " ✅");
           };
           c.appendChild(b);
@@ -968,16 +1066,16 @@ const Update = {
   async deploy() {
     const msg = $("msgUWorker");
     try {
-      const name = ($("uWorkerName").value || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
-      if (!name) throw new Error("نام Worker را وارد کن یا از لیست انتخاب کن");
+      const typed = ($("uWorkerName").value || "").trim();
+      if (!typed) throw new Error("نام Worker را وارد کن یا از لیست انتخاب کن");
+      stepMsg("msgUWorker", "در حال پیدا کردن ورکر…", "busy");
+      const resolved = await CloudOps.resolveWorkerName(typed);
+      const name = resolved.name;
+      $("uWorkerName").value = name;
+      if (resolved.note) { toast(resolved.note); Log.add(resolved.note); }
       const code = $("uCodeText").value || "";
       if (!code.trim()) throw new Error("کد جدید را وارد کن (فایل، پیست، یا از ریپو)");
       const v = Vars.collect("uVars");
-      const hasVars = Object.keys(v.vars).length || Object.keys(v.secrets).length;
-      if (!hasVars) {
-        // هیچ متغیری داده نشده: برای حفظ کامل، keep_bindings کافی است
-        stepMsg("msgUWorker", "در حال آپلود کد جدید…", "busy");
-      }
       stepMsg("msgUWorker", "در حال آپلود کد جدید…", "busy");
       const res = await CloudOps.deployWorker({
         name: name, code: code,
@@ -1039,8 +1137,11 @@ const Update = {
     const msg = $("msgUVars");
     const view = $("bindingsView");
     try {
-      const name = ($("uVarsWorker").value || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
-      if (!name) throw new Error("نام Worker را وارد کن");
+      const typed = ($("uVarsWorker").value || "").trim();
+      if (!typed) throw new Error("نام Worker را وارد کن");
+      const resolved = await CloudOps.resolveWorkerName(typed);
+      const name = resolved.name;
+      $("uVarsWorker").value = name;
       const r = await cfFetch("accounts/" + S.accountId + "/workers/scripts/" + name + "/settings", { timeoutMs: 20000 });
       if (!r.ok) throw new Error(friendlyCfError(r.data.errors, r.status));
       const bs = (r.data.result && r.data.result.bindings) || [];
@@ -1070,8 +1171,11 @@ const Update = {
   async saveBindings() {
     const msg = $("msgUVars");
     try {
-      const name = ($("uVarsWorker").value || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
-      if (!name) throw new Error("نام Worker را وارد کن");
+      const typed = ($("uVarsWorker").value || "").trim();
+      if (!typed) throw new Error("نام Worker را وارد کن");
+      const resolved = await CloudOps.resolveWorkerName(typed);
+      const name = resolved.name;
+      $("uVarsWorker").value = name;
       const v = Vars.collect("uVarsQuick");
       stepMsg("msgUVars", "در حال ذخیره…", "busy");
       await CloudOps.saveVarsOnly(name, v.vars, v.secrets);
@@ -1086,10 +1190,26 @@ const Update = {
 
 /* ═══════════ تب وب‌هوک ═══════════ */
 const Webhook = {
+  host(platform) { return platform === "telegram" ? "api.telegram.org" : "api.bale.ai"; },
+  base() { return ($("wWorkerUrl").value || "").trim().replace(/\/+$/, ""); },
   fullUrl() {
-    const url = ($("wWorkerUrl").value || "").trim().replace(/\/+$/, "");
-    const path = ($("wPath").value || "/webhook").trim() || "/webhook";
-    return url + (path.startsWith("/") ? path : "/" + path);
+    const url = Webhook.base();
+    const path = ($("wPath").value || "").trim().replace(/^\/+|\/+$/g, "");
+    return url + (path ? "/" + path : "");
+  },
+  async genManual(kind) {
+    const platform = $("wPlatform").value;
+    const token = ($("wBotToken").value || "").trim();
+    const drop = $("wDrop") && $("wDrop").checked;
+    if (kind === "delete") {
+      $("hookCmd").value = 'curl -s "https://' + Webhook.host(platform) + "/bot" + token + '/deleteWebhook' + (drop ? "?drop_pending_updates=true" : "") + '"';
+    } else {
+      const hook = Webhook.fullUrl();
+      $("hookCmd").value = 'curl -s "https://' + Webhook.host(platform) + "/bot" + token + '/setWebhook?url=' + encodeURIComponent(hook) + (drop ? "&drop_pending_updates=true" : "") + '"';
+    }
+    $("hookFallback").hidden = false;
+    $("hookFallback").open = true;
+    $("hookCmd").scrollIntoView({ behavior: "smooth", block: "nearest" });
   },
   async set() {
     const msg = $("msgWebhook");
@@ -1097,26 +1217,71 @@ const Webhook = {
       const platform = $("wPlatform").value;
       const token = ($("wBotToken").value || "").trim();
       const hook = Webhook.fullUrl();
-      if (!/^https:\/\/.+/.test(hook)) throw new Error("آدرس ورکر را کامل وارد کن (https://…)");
+      if (!/^https:\/\/.+/.test(hook)) throw new Error("آدرس ورکر را کامل وارد کن (https://name.sub.workers.dev)");
       if (!token) throw new Error("توکن ربات لازم است");
+      msg.className = "stepmsg busy"; msg.textContent = "در حال چک کردن زنده‌بودن ورکر…";
+      const p = await Tools.probe(Webhook.base());
+      const wName = Tools.workerNameFromUrl(Webhook.base());
+      const deployed = wName ? await Tools.apiExists(wName) : null;
+      if (deployed === false) {
+        const go = confirm("⚠️ ورکری با نام «" + wName + "» در اکانت کلادفلرت پیدا نشد — یعنی هنوز دیپلوی نشده یا آدرس اشتباه است.\n\nست کردن وب‌هوک روی آدرس مرده = قطع شدن ربات (همان مشکل قبلی).\n\nبا این حال ادامه می‌دهی؟");
+        if (!go) { msg.className = "stepmsg err"; msg.textContent = "لغو شد — اول از تب «بروزرسانی» ورکر را دیپلوی کن."; return; }
+      } else if (!p.reachable) {
+        const go = confirm("⚠️ ورکر روی این آدرس پاسخ نمی‌دهد!\n\nاگر وب‌هوک را روی آدرس مرده ست کنی، ربات قطع می‌شود (همان مشکل قبلی).\n\nاول از تب «ابزارها» تست سلامت بگیر یا از تب «بروزرسانی» دیپلوی کن.\n\nبا این حال ادامه می‌دهی؟");
+        if (!go) { msg.className = "stepmsg err"; msg.textContent = "لغو شد — اول ورکر را دیپلوی کن یا آدرس را اصلاح کن."; return; }
+      }
+      const params = { url: hook };
+      if ($("wDrop").checked) params.drop_pending_updates = "true";
       msg.className = "stepmsg busy"; msg.textContent = "در حال تنظیم…";
-      const r = await CloudOps.webhookCall(platform, token, "setWebhook", { url: hook });
+      const r = await CloudOps.webhookCall(platform, token, "setWebhook", params);
       if (!r.ok) {
         const d = r.data || {};
         throw new Error("پلتفرم رد کرد: " + ((d.description || (d.errors && d.errors[0] && d.errors[0].message)) || ("HTTP " + r.status)));
       }
-      msg.className = "stepmsg ok"; msg.textContent = "وب‌هوک تنظیم شد ✅ → " + hook;
+      let extra = "";
+      try {
+        const info = await CloudOps.webhookCall(platform, token, "getWebhookInfo", {});
+        const res = info.ok && info.data.result;
+        if (res && res.url === hook) extra = "\n✅ تایید شد — وب‌هوک فعال است";
+        else if (res && res.url) extra = "\n⚠️ وب‌هوک فعلی پلتفرم: " + res.url;
+      } catch (e) { /* اختیاری */ }
+      msg.className = "stepmsg ok";
+      msg.textContent = "وب‌هوک تنظیم شد ✅ → " + hook + extra;
       Log.step("🪝 وب‌هوک تنظیم شد → " + hook);
     } catch (e) {
       if (e.name === "TypeError" || e.name === "TimeoutError") {
         msg.className = "stepmsg err";
-        msg.textContent = "درخواست مستقیم از مرورگر رد شد (CORS/شبکه). دستور زیر را کپی کن و در Termux اجرا کن:";
-        const platform = $("wPlatform").value;
-        const token = ($("wBotToken").value || "").trim();
-        const host = platform === "telegram" ? "api.telegram.org" : "api.bale.ai";
-        $("hookCmd").value = 'curl -s "https://' + host + '/bot' + token + '/setWebhook?url=' + encodeURIComponent(Webhook.fullUrl()) + '"';
-        $("hookFallback").hidden = false;
-        $("hookFallback").open = true;
+        msg.textContent = "درخواست مستقیم از مرورگر رد شد (CORS/شبکه). دستور آماده‌ی زیر را در Termux یا کامپیوتر اجرا کن:";
+        await Webhook.genManual("set");
+      } else {
+        msg.className = "stepmsg err"; msg.textContent = "❌ " + (e.friendly || e.message);
+      }
+    }
+  },
+  async remove() {
+    const msg = $("msgWebhook");
+    try {
+      const platform = $("wPlatform").value;
+      const token = ($("wBotToken").value || "").trim();
+      if (!token) throw new Error("توکن ربات لازم است");
+      const go = confirm("وب‌هوک قطع شود؟\nتا تنظیم دوباره، ربات هیچ پیامی دریافت نمی‌کند.");
+      if (!go) return;
+      msg.className = "stepmsg busy"; msg.textContent = "در حال قطع…";
+      const params = {};
+      if ($("wDrop").checked) params.drop_pending_updates = "true";
+      const r = await CloudOps.webhookCall(platform, token, "deleteWebhook", params);
+      if (!r.ok) {
+        const d = r.data || {};
+        throw new Error("پلتفرم رد کرد: " + (d.description || "HTTP " + r.status));
+      }
+      msg.className = "stepmsg ok";
+      msg.textContent = "وب‌هوک قطع شد — برای وصل دوباره، «تنظیم وب‌هوک» را بزن.";
+      Log.add("🪝 وب‌هوک قطع شد");
+    } catch (e) {
+      if (e.name === "TypeError" || e.name === "TimeoutError") {
+        msg.className = "stepmsg err";
+        msg.textContent = "درخواست مستقیم از مرورگر رد شد (CORS/شبکه). دستور آماده‌ی زیر را در Termux اجرا کن:";
+        await Webhook.genManual("delete");
       } else {
         msg.className = "stepmsg err"; msg.textContent = "❌ " + (e.friendly || e.message);
       }
@@ -1132,13 +1297,245 @@ const Webhook = {
       const r = await CloudOps.webhookCall(platform, token, "getWebhookInfo", {});
       if (!r.ok) throw new Error("پلتفرم رد کرد (توکن/شبکه را چک کن)");
       const res = r.data.result || {};
+      const errDate = res.last_error_date ? new Date(res.last_error_date * 1000).toLocaleString("fa-IR") : "";
       msg.className = "stepmsg ok";
       msg.textContent = "URL فعلی: " + (res.url || "— تنظیم نشده —") +
-        "\nآخرین خطا: " + (res.last_error_message || "ندارد") +
-        "\nدر صف: " + (res.pending_update_count || 0);
+        "\nعقب‌افتاده: " + (res.pending_update_count || 0) + " پیام" +
+        "\nآخرین خطا: " + (res.last_error_message ? res.last_error_message + (errDate ? " — " + errDate : "") : "ندارد");
+      if (res.url) {
+        try { $("wWorkerUrl").value = new URL(res.url).origin; } catch (e) { /* بی‌خطر */ }
+      }
     } catch (e) {
       msg.className = "stepmsg err";
-      msg.textContent = "❌ " + (e.friendly || e.message) + (e.name === "TypeError" ? " — احتمالاً CORS پلتفرم اجازه نمی‌دهد؛ برای تنظیم، دکمه «تنظیم وب‌هوک» روش دستی نشان می‌دهد." : "");
+      msg.textContent = "❌ " + (e.friendly || e.message) + (e.name === "TypeError" ? " — احتمالاً CORS پلتفرم اجازه نمی‌دهد؛ از دکمه «دستور دستی» استفاده کن." : "");
+    }
+  },
+};
+
+/* ═══════════ ابزارها: Cron Triggers + عیب‌یابی ═══════════ */
+const Tools = {
+  state: { crons: [] },
+  async resolveTarget() {
+    const typed = ($("tWorker").value || "").trim();
+    if (!typed) throw new Error("نام ورکر هدف را انتخاب کن (لیست را بگیر یا تایپ کن)");
+    const resolved = await CloudOps.resolveWorkerName(typed);
+    $("tWorker").value = resolved.name;
+    if (resolved.note) { toast(resolved.note); Log.add(resolved.note); }
+    Tools.setDashLinks(resolved.name);
+    return resolved.name;
+  },
+  setDashLinks(name) {
+    const base = "https://dash.cloudflare.com/" + S.accountId + "/workers/services/view/" + encodeURIComponent(name) + "/production";
+    if ($("dashWorkerLink")) $("dashWorkerLink").href = base;
+    if ($("dashLogsLink")) $("dashLogsLink").href = base;
+    if ($("cronDashLink")) $("cronDashLink").href = base;
+  },
+  async ensureWorkerUrl() {
+    let url = ($("tWorkerUrl").value || "").trim().replace(/\/+$/, "");
+    if (url) return url;
+    const name = await Tools.resolveTarget();
+    const sd = await cfFetch("accounts/" + S.accountId + "/workers/subdomain", { timeoutMs: 15000 });
+    const sub = sd.data.result && sd.data.result.subdomain;
+    if (!sub) throw new Error("زیردامنه workers.dev پیدا نشد — آدرس ورکر را دستی وارد کن");
+    url = "https://" + name + "." + sub + ".workers.dev";
+    $("tWorkerUrl").value = url;
+    return url;
+  },
+  /* بررسی واقعی دیپلوی‌شدن ورکر از طریق API — چون DNS وایلدکارت workers.dev
+     برای هر نامی پاسخ می‌دهد، تست شبکه به‌تنهایی کافی نیست */
+  async apiExists(name) {
+    if (!name) return null;
+    try {
+      const r = await cfFetch("accounts/" + S.accountId + "/workers/scripts/" + encodeURIComponent(name) + "/settings", { timeoutMs: 15000 });
+      return !!r.ok;
+    } catch (e) { return null; }
+  },
+  workerNameFromUrl(url) {
+    try {
+      const u = new URL(url);
+      if (!u.hostname.endsWith(".workers.dev")) return "";
+      return u.hostname.split(".")[0] || "";
+    } catch (e) { return ""; }
+  },
+  /* تست زنده‌بودن ورکر: اول fetch عادی؛ اگر CORS بست، پیشام no-cors
+     مشخص می‌کند سرور زنده است یا واقعا در دسترس نیست. */
+  async probe(url) {
+    const now = () => (window.performance && performance.now ? performance.now() : Date.now());
+    const t0 = now();
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      let text = "";
+      try { text = (await res.text()).replace(/\s+/g, " ").slice(0, 140); } catch (e) { /* CORS جواب را می‌بندد */ }
+      return { reachable: true, status: res.status, ms: Math.round(now() - t0), text: text };
+    } catch (e) {
+      try {
+        await fetch(url, { mode: "no-cors", signal: AbortSignal.timeout(15000) });
+        return { reachable: true, opaque: true, ms: Math.round(now() - t0) };
+      } catch (e2) {
+        return { reachable: false, ms: Math.round(now() - t0), error: "پاسخی دریافت نشد (DNS/شبکه/ورکر خاموش)" };
+      }
+    }
+  },
+  row(label, value, cls) {
+    const d = document.createElement("div");
+    d.className = "drow" + (cls ? " " + cls : "");
+    const b = document.createElement("b"); b.textContent = label + ": ";
+    const s = document.createElement("span"); s.textContent = value;
+    d.append(b, s);
+    return d;
+  },
+  async probeWorker() {
+    const out = $("diagOut");
+    try {
+      stepMsg("msgDiag", "در حال تست سلامت ورکر…", "busy");
+      const url = await Tools.ensureWorkerUrl();
+      const wName = Tools.workerNameFromUrl(url);
+      const deployed = wName ? await Tools.apiExists(wName) : null;
+      const p = await Tools.probe(url);
+      out.innerHTML = "";
+      out.appendChild(Tools.row("آدرس", url, ""));
+      if (wName) out.appendChild(Tools.row("وضعیت دیپلوی", deployed === true ? "در اکانت ثبت شده ✅" : (deployed === false ? "در اکانت پیدا نشد ❌ — هنوز دیپلوی نشده یا نامش فرق دارد" : "نامشخص (بررسی API ممکن نشد)"), deployed === true ? "ok" : (deployed === false ? "err" : "warn")));
+      if (deployed === false) {
+        out.appendChild(Tools.row("راهنما", "اول از تب «بروزرسانی» کد را دیپلوی کن، بعد وب‌هوک ست کن. وب‌هوک روی ورکر دیپلوی‌نشده = قطع شدن ربات.", "err"));
+        stepMsg("msgDiag", "ورکر دیپلوی نشده — وب‌هوک روی این آدرس ست نشود!", "err");
+        Log.add("🔎 سلامت ورکر: در اکانت پیدا نشد", "err");
+        return;
+      }
+      if (p.reachable) {
+        if (p.opaque) {
+          out.appendChild(Tools.row("نتیجه", "زنده است ✅ (پاسخ داد) — زمان " + p.ms + "ms", "ok"));
+          out.appendChild(Tools.row("توضیح", "کد وضعیت HTTP از مرورگر قابل خواندن نیست (CORS) — برای ورکر ربات طبیعی است", ""));
+        } else {
+          out.appendChild(Tools.row("نتیجه", "HTTP " + p.status + " — زمان " + p.ms + "ms", p.status < 500 ? "ok" : "err"));
+          if (p.text) out.appendChild(Tools.row("پاسخ", p.text, ""));
+        }
+        if (!$("wWorkerUrl").value) $("wWorkerUrl").value = url;
+        stepMsg("msgDiag", "ورکر زنده است ✅ — حالا می‌توانی وب‌هوک را با خیال راحت ست کنی", "ok");
+        Log.add("🔎 سلامت ورکر: زنده (" + (p.opaque ? "opaque" : "HTTP " + p.status) + ", " + p.ms + "ms)", "ok");
+      } else {
+        out.appendChild(Tools.row("نتیجه", "در دسترس نیست ❌", "err"));
+        out.appendChild(Tools.row("راهنما", "ورکر دیپلوی نشده یا آدرس اشتباه است. از تب «بروزرسانی» کد را دیپلوی کن و دوباره تست کن. وب‌هوک روی آدرس مرده ست نشود (ربات قطع می‌شود).", "err"));
+        stepMsg("msgDiag", "ورکر در دسترس نیست — وب‌هوک روی این آدرس ست نشود!", "err");
+        Log.add("🔎 سلامت ورکر: در دسترس نیست", "err");
+      }
+    } catch (e) {
+      stepMsg("msgDiag", "❌ " + (e.friendly || e.message), "err");
+    }
+  },
+  async botStatus() {
+    const out = $("diagOut");
+    try {
+      const platform = $("tPlatform").value;
+      const token = ($("tBotToken").value || "").trim();
+      if (!token) throw new Error("توکن ربات را وارد کن (همان توکن BotFather یا بله)");
+      stepMsg("msgDiag", "در حال گرفتن وضعیت ربات…", "busy");
+      const me = await CloudOps.webhookCall(platform, token, "getMe", {});
+      if (!me.ok) throw new Error("توکن رد شد — بررسی کن (" + ((me.data && me.data.description) || "HTTP " + me.status) + ")");
+      const bot = me.data.result || {};
+      const info = await CloudOps.webhookCall(platform, token, "getWebhookInfo", {});
+      const res = (info.ok && info.data.result) || {};
+      const errDate = res.last_error_date ? new Date(res.last_error_date * 1000).toLocaleString("fa-IR") : "";
+      out.innerHTML = "";
+      out.appendChild(Tools.row("ربات", "@" + (bot.username || "?") + (bot.first_name ? " — " + bot.first_name : ""), "ok"));
+      out.appendChild(Tools.row("وب‌هوک", res.url || "— تنظیم نشده —", res.url ? "ok" : "warn"));
+      if (res.url) {
+        try {
+          const u = new URL(res.url);
+          out.appendChild(Tools.row("هاست وب‌هوک", u.host + u.pathname, ""));
+          if (!$("tWorkerUrl").value) $("tWorkerUrl").value = u.origin;
+          if (!$("wWorkerUrl").value) $("wWorkerUrl").value = u.origin;
+        } catch (e) { /* بی‌خطر */ }
+      }
+      out.appendChild(Tools.row("عقب‌افتاده", (res.pending_update_count || 0) + " پیام", res.pending_update_count ? "warn" : "ok"));
+      out.appendChild(Tools.row("آخرین خطا", res.last_error_message ? res.last_error_message + (errDate ? " — " + errDate : "") : "ندارد", res.last_error_message ? "err" : "ok"));
+      let advice = "";
+      if (!res.url) advice = "وب‌هوک تنظیم نشده — از تب «وب‌هوک» ست کن";
+      else if (res.last_error_message) advice = "وب‌هوک ست شده ولی پلتفرم خطا می‌گیرد — «تست سلامت ورکر» را بزن؛ اگر ورکر زنده بود، مسیر وب‌هوک را چک کن (ربات‌های این پنل: ریشه)";
+      else advice = "همه‌چیز سالم به نظر می‌رسد ✅";
+      out.appendChild(Tools.row("نتیجه", advice, res.last_error_message ? "warn" : "ok"));
+      stepMsg("msgDiag", "وضعیت ربات گرفته شد", "ok");
+      Log.add("🤖 وضعیت ربات @" + (bot.username || "?") + " بررسی شد");
+    } catch (e) {
+      stepMsg("msgDiag", "❌ " + (e.friendly || e.message) + (e.name === "TypeError" ? " — CORS پلتفرم اجازه نداد؛ از دکمه «دستور دستی» در تب وب‌هوک استفاده کن." : ""), "err");
+    }
+  },
+  validCron(c) {
+    const s = String(c || "").trim().replace(/\s+/g, " ");
+    if (!/^[\d*,/\- ]+$/.test(s)) return null;
+    const f = s.split(" ");
+    if (f.length < 5 || f.length > 6) return null;
+    return s;
+  },
+  cronRender() {
+    const box = $("cronList");
+    box.innerHTML = "";
+    if (!Tools.state.crons.length) {
+      const s = document.createElement("span");
+      s.className = "pick-empty";
+      s.textContent = "زمان‌بندی‌ای ثبت نشده — عبارت Cron اضافه کن و «ذخیره» بزن";
+      box.appendChild(s);
+      return;
+    }
+    Tools.state.crons.forEach((c, i) => {
+      const chip = document.createElement("span");
+      chip.className = "cronchip";
+      const code = document.createElement("code"); code.textContent = c;
+      const x = document.createElement("button"); x.type = "button"; x.textContent = "✕"; x.title = "حذف";
+      x.onclick = () => { Tools.state.crons.splice(i, 1); Tools.cronRender(); };
+      chip.append(code, x);
+      box.appendChild(chip);
+    });
+  },
+  cronAdd() {
+    const c = Tools.validCron($("cronInput").value);
+    if (!c) { stepMsg("msgCron", "عبارت Cron معتبر نیست — قالب ۵ فیلدی مثل */5 * * * *", "err"); return; }
+    if (Tools.state.crons.includes(c)) { toast("این عبارت قبلاً اضافه شده"); return; }
+    Tools.state.crons.push(c);
+    $("cronInput").value = "";
+    Tools.cronRender();
+    stepMsg("msgCron", "اضافه شد — برای اعمال، «ذخیره زمان‌بندی‌ها» را بزن", "ok");
+  },
+  cronPreset(v) { $("cronInput").value = v; Tools.cronAdd(); },
+  async cronLoad() {
+    const msg = $("msgCron");
+    try {
+      const name = await Tools.resolveTarget();
+      msg.className = "stepmsg busy"; msg.textContent = "در حال گرفتن زمان‌بندی‌ها…";
+      const r = await cfFetch("accounts/" + S.accountId + "/workers/scripts/" + encodeURIComponent(name) + "/schedules", { timeoutMs: 20000 });
+      if (!r.ok) throw new Error(friendlyCfError(r.data.errors, r.status));
+      const res = r.data.result;
+      const list = Array.isArray(res) ? res : ((res && res.schedules) || []);
+      Tools.state.crons = list.map((x) => x.cron).filter(Boolean);
+      Tools.cronRender();
+      msg.className = "stepmsg ok";
+      msg.textContent = Tools.state.crons.length
+        ? Tools.state.crons.length + " زمان‌بندی فعلی پیدا شد — می‌توانی حذف/اضافه کنی و ذخیره بزنی"
+        : "زمان‌بندی‌ای ثبت نشده — عبارت اضافه کن و ذخیره بزن";
+    } catch (e) {
+      msg.className = "stepmsg err"; msg.textContent = "❌ " + (e.friendly || e.message);
+    }
+  },
+  async cronSave() {
+    const msg = $("msgCron");
+    try {
+      const name = await Tools.resolveTarget();
+      msg.className = "stepmsg busy"; msg.textContent = "در حال ذخیره زمان‌بندی‌ها…";
+      const r = await cfFetch("accounts/" + S.accountId + "/workers/scripts/" + encodeURIComponent(name) + "/schedules", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ schedules: Tools.state.crons.map((c) => ({ cron: c })) }),
+        timeoutMs: 30000,
+      });
+      if (!r.ok) throw new Error(friendlyCfError(r.data.errors, r.status));
+      const res = r.data.result;
+      const list = Array.isArray(res) ? res : ((res && res.schedules) || []);
+      Tools.state.crons = list.map((x) => x.cron).filter(Boolean);
+      Tools.cronRender();
+      msg.className = "stepmsg ok";
+      msg.textContent = "زمان‌بندی‌ها ذخیره شد ✅ (" + Tools.state.crons.length + " مورد)";
+      Log.step("⏰ Cron «" + name + "» ذخیره شد: " + (Tools.state.crons.join(" | ") || "خالی"));
+    } catch (e) {
+      msg.className = "stepmsg err"; msg.textContent = "❌ " + (e.friendly || e.message);
     }
   },
 };
@@ -1187,6 +1584,14 @@ const Webhook = {
   // تولید خودکار دستور پل هنگام تایپ
   $("bToken").addEventListener("input", Bridge.genCommand);
   $("bAccount").addEventListener("input", Bridge.genCommand);
+
+  // پاکیزه‌سازی زنده نام ورکر (زیرخط مجاز نیست → خط تیره)
+  NameSan.live("sWorker", "sWorkerHint");
+  NameSan.live("uWorkerName", "uWorkerHint");
+  NameSan.live("uVarsWorker", "uVarsWorkerHint");
+
+  // ابزارها
+  $("cronInput").addEventListener("keydown", (e) => { if (e.key === "Enter") Tools.cronAdd(); });
 
   // Enter در فرم اتصال
   $("fToken").addEventListener("keydown", (e) => { if (e.key === "Enter") Conn.connect(); });

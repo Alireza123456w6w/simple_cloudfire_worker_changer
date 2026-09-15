@@ -64,7 +64,19 @@
     <button class="tab active" data-tab="setup" onclick="UI.tab('setup')">🚀 راه‌اندازی جدید</button>
     <button class="tab" data-tab="update" onclick="UI.tab('update')">🔄 بروزرسانی</button>
     <button class="tab" data-tab="webhook" onclick="UI.tab('webhook')">🪝 وب‌هوک</button>
+    <button class="tab" data-tab="tools" onclick="UI.tab('tools')">🧰 ابزارها</button>
   </nav>
+
+  <!-- ═══════════ لینک‌های کانال پیشنهادات ═══════════ -->
+  <section class="card links-card">
+    <h2>🔗 کانال پیشنهادات و پشتیبانی</h2>
+    <div class="linkgrid">
+      <a class="linkbtn" href="https://offers-pishnahadat.vercel.app" target="_blank" rel="noopener">🌐 سایت کانال پیشنهادات</a>
+      <a class="linkbtn" href="https://zaya.io/Offers_pishnahadat" target="_blank" rel="noopener">📄 صفحه‌های کانال پیشنهادات</a>
+      <a class="linkbtn" href="https://t.me/offerspishnahadat_feedbackbot" target="_blank" rel="noopener">🤖 بات پشتیبانی</a>
+      <a class="linkbtn" href="https://t.me/offerspishnahadat_shop_bot" target="_blank" rel="noopener">🛒 ربات فروشگاه کانال</a>
+    </div>
+  </section>
 
   <!-- ═══════════ تب ۱: راه‌اندازی جدید ═══════════ -->
   <section id="tab-setup" class="tabpanel">
@@ -74,12 +86,14 @@
       <div class="grid3">
         <div class="field">
           <label>نام Worker</label>
-          <input id="sWorker" dir="ltr" placeholder="my-bot">
-          <p class="hint">حروف انگلیسی، عدد، خط تیره</p>
+          <input id="sWorker" dir="ltr" placeholder="my-bot" autocomplete="off">
+          <p class="hint">⚠️ کلادفلر فقط <b>حروف کوچک انگلیسی، عدد و خط تیره (-)</b> را می‌پذیرد. زیرخط (_)، فاصله، حروف بزرگ و حروف فارسی مجاز نیستند — این کادر خودکار اصلاح می‌کند. مثال: <code>my-shop-bot</code></p>
+          <p class="livehint" id="sWorkerHint"></p>
         </div>
         <div class="field">
           <label>نام دیتابیس D1</label>
-          <input id="sD1" dir="ltr" placeholder="my-db">
+          <input id="sD1" dir="ltr" placeholder="my-db" autocomplete="off">
+          <p class="hint">اینجا زیرخط (_) هم مجاز است.</p>
         </div>
         <div class="field">
           <label>نام اتصال (Binding)</label>
@@ -147,6 +161,11 @@
           <input id="sHookToken" type="password" dir="ltr" autocomplete="off" placeholder="123456:ABC-...">
         </div>
       </div>
+      <div class="field">
+        <label>مسیر وب‌هوک (اختیاری)</label>
+        <input id="sHookPath" dir="ltr" placeholder="خالی بگذار = ریشه ورکر (/)">
+        <p class="hint">ربات‌های ساخته‌شده با این پنل آپدیت‌ها را در <b>ریشه</b> می‌گیرند؛ فقط اگر کد ورکرت مسیر خاصی می‌خواهد (مثل <code>/webhook</code>) اینجا بنویس. مسیر اشتباه = قطع شدن ربات.</p>
+      </div>
       <div class="row gap">
         <button class="btn" onclick="Setup.stepWebhook()">🪝 تنظیم وب‌هوک</button>
         <button class="btn btn-primary" onclick="Setup.runAll()">▶️ اجرای خودکار همه مراحل</button>
@@ -178,6 +197,7 @@
           <button class="btn btn-sm" onclick="Update.listWorkers()">دریافت لیست</button>
         </div>
         <div id="workerPick" class="pick"></div>
+        <p class="livehint" id="uWorkerHint"></p>
       </div>
       <div class="source">
         <div class="row gap">
@@ -236,6 +256,7 @@
           <button class="btn btn-sm" onclick="Update.showBindings()">مشاهده</button>
         </div>
         <div id="workerPick2" class="pick"></div>
+        <p class="livehint" id="uVarsWorkerHint"></p>
       </div>
       <div id="bindingsView" class="bindings"></div>
       <details class="adv" id="varsEditWrap" hidden>
@@ -253,13 +274,13 @@
   <section id="tab-webhook" class="tabpanel" hidden>
     <div class="card">
       <h2>🪝 تنظیم وب‌هوک ربات</h2>
-      <p class="hint">آدرس وب‌هوک = آدرس ورکر روی workers.dev + مسیر. اگر ورکر هنوز آدرس ندارد، اول دیپلویش کن.</p>
+      <p class="hint">آدرس وب‌هوک = آدرس ورکر روی workers.dev + مسیر (اختیاری). <b>ربات‌های ساخته‌شده با این پنل آپدیت‌ها را در ریشه می‌گیرند</b> — یعنی کادر «مسیر» را معمولاً خالی بگذار. مسیر اشتباه یا آدرس مرده = قطع شدن ربات.</p>
       <div class="grid2">
         <div class="field">
           <label>پلتفرم</label>
           <select id="wPlatform">
-            <option value="bale">بله (Bale)</option>
             <option value="telegram">تلگرام (Telegram)</option>
+            <option value="bale">بله (Bale)</option>
           </select>
         </div>
         <div class="field">
@@ -269,23 +290,98 @@
         <div class="field">
           <label>آدرس ورکر</label>
           <input id="wWorkerUrl" dir="ltr" inputmode="url" placeholder="https://my-bot.xxx.workers.dev">
-          <p class="hint" id="wUrlHint"></p>
+          <p class="hint" id="wUrlHint">بعد از دیپلوی موفق، خودکار پر می‌شود.</p>
         </div>
         <div class="field">
-          <label>مسیر وب‌هوک</label>
-          <input id="wPath" dir="ltr" value="/webhook">
+          <label>مسیر وب‌هوک (معمولاً خالی)</label>
+          <input id="wPath" dir="ltr" placeholder="خالی = ریشه ورکر (/)">
         </div>
       </div>
+      <label class="check"><input type="checkbox" id="wDrop"> پاک کردن پیام‌های عقب‌افتاده بعد از تغییر (drop_pending_updates)</label>
       <div class="row gap">
         <button class="btn btn-ok" onclick="Webhook.set()">🪝 تنظیم وب‌هوک</button>
         <button class="btn" onclick="Webhook.info()">📋 وضعیت فعلی وب‌هوک</button>
+        <button class="btn" onclick="Webhook.remove()">✂️ قطع وب‌هوک</button>
+        <button class="btn" onclick="Webhook.genManual('set')">🖥 دستور دستی</button>
       </div>
       <div class="stepmsg" id="msgWebhook"></div>
       <details class="adv" id="hookFallback" hidden>
         <summary>روش دستی (اگر درخواست مستقیم از مرورگر رد شد)</summary>
-        <p class="hint">این دستور را در Termux یا کامپیوتر اجرا کن:</p>
+        <p class="hint">این دستور را در Termux یا کامپیوتر اجرا کن (خروجی JSON با <code>"ok":true</code> یعنی موفق):</p>
         <div class="row"><textarea id="hookCmd" dir="ltr" rows="3" readonly></textarea><button class="btn btn-sm" onclick="UI.copy('hookCmd')">کپی</button></div>
       </details>
+    </div>
+  </section>
+
+  <!-- ═══════════ تب ۴: ابزارها — Cron + عیب‌یابی ═══════════ -->
+  <section id="tab-tools" class="tabpanel" hidden>
+    <div class="card">
+      <h2>🎯 ورکر هدف</h2>
+      <div class="field">
+        <div class="row">
+          <input id="tWorker" dir="ltr" list="workerList" placeholder="نام ورکر یا از لیست انتخاب کن">
+          <button class="btn btn-sm" onclick="Update.listWorkers()">دریافت لیست</button>
+        </div>
+        <div id="workerPick3" class="pick"></div>
+      </div>
+      <div class="field">
+        <label>آدرس ورکر (برای تست سلامت — خالی = خودکار ساخته می‌شود)</label>
+        <input id="tWorkerUrl" dir="ltr" inputmode="url" placeholder="https://my-bot.xxx.workers.dev">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>⏰ Cron Triggers (زمان‌بندی)</h2>
+      <p class="hint">زمان‌بندی‌های فعلی ورکر را ببین، اضافه/حذف کن و ذخیره کن. برای اجرا، کد ورکر باید هندلر <code>scheduled</code> داشته باشد.</p>
+      <div class="row gap">
+        <button class="btn" onclick="Tools.cronLoad()">📋 نمایش زمان‌بندی فعلی</button>
+      </div>
+      <div id="cronList" class="cronlist"></div>
+      <div class="field">
+        <label>افزودن عبارت Cron</label>
+        <div class="row">
+          <input id="cronInput" dir="ltr" placeholder="*/5 * * * *">
+          <button class="btn btn-sm" onclick="Tools.cronAdd()">+ افزودن</button>
+        </div>
+        <p class="hint">قالب استاندارد ۵ فیلدی: دقیقه، ساعت، روزِماه، ماه، روزِهفته. نمونه: <code>*/5 * * * *</code> هر ۵ دقیقه — <code>0 8 * * *</code> هر روز ساعت ۸ صبح.</p>
+        <div class="row gap">
+          <button class="btn btn-sm" onclick="Tools.cronPreset('*/5 * * * *')">هر ۵ دقیقه</button>
+          <button class="btn btn-sm" onclick="Tools.cronPreset('0 * * * *')">هر ساعت</button>
+          <button class="btn btn-sm" onclick="Tools.cronPreset('0 8 * * *')">روزانه ۸ صبح</button>
+          <button class="btn btn-sm" onclick="Tools.cronPreset('0 0 * * *')">نیمه‌شب</button>
+        </div>
+      </div>
+      <div class="row gap">
+        <button class="btn btn-ok" onclick="Tools.cronSave()">🟢 ذخیره زمان‌بندی‌ها</button>
+        <a class="btn" id="cronDashLink" href="https://dash.cloudflare.com/" target="_blank" rel="noopener">در داشبورد ↗</a>
+      </div>
+      <div class="stepmsg" id="msgCron"></div>
+    </div>
+
+    <div class="card">
+      <h2>🩺 عیب‌یابی و لاگ</h2>
+      <div class="row gap">
+        <button class="btn" onclick="Tools.probeWorker()">🔎 تست سلامت ورکر</button>
+        <button class="btn" onclick="Tools.botStatus()">🤖 وضعیت ربات و وب‌هوک</button>
+        <a class="btn" id="dashWorkerLink" href="https://dash.cloudflare.com/" target="_blank" rel="noopener">صفحه ورکر در داشبورد ↗</a>
+        <a class="btn" id="dashLogsLink" href="https://dash.cloudflare.com/" target="_blank" rel="noopener">لاگ‌ها در داشبورد ↗</a>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>پلتفرم ربات</label>
+          <select id="tPlatform">
+            <option value="telegram">تلگرام (Telegram)</option>
+            <option value="bale">بله (Bale)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>توکن ربات (برای «وضعیت ربات»)</label>
+          <input id="tBotToken" type="password" dir="ltr" autocomplete="off" placeholder="123456:ABC-...">
+        </div>
+      </div>
+      <div id="diagOut" class="diag"></div>
+      <div class="stepmsg" id="msgDiag"></div>
+      <p class="hint">راهنمای عیب‌یابی: اگر «وضعیت ربات» خطای last_error نشان داد، اول «تست سلامت ورکر» را بزن. اگر ورکر زنده بود، مسیر وب‌هوک را با کد مقایسه کن (ربات‌های این پنل: ریشه). اگر ورکر مرده بود، از تب «بروزرسانی» دوباره دیپلوی کن و بعد وب‌هوک را دوباره ست کن.</p>
     </div>
   </section>
 
@@ -293,13 +389,19 @@
   <section class="card" id="logCard" hidden>
     <h2>📜 گزارش اجرا</h2>
     <div id="log" class="log" dir="rtl"></div>
-    <div class="row gap"><button class="btn btn-sm" onclick="Log.clear()">پاک کردن</button></div>
+    <div class="row gap"><button class="btn btn-sm" onclick="Log.copy()">📋 کپی گزارش</button><button class="btn btn-sm" onclick="Log.clear()">پاک کردن</button></div>
   </section>
 
   <footer class="foot">
     <p>
       <a href="https://github.com/Alireza123456w6w/simple_cloudfire_worker_changer" target="_blank" rel="noopener">ریپوی گیت‌هاب ⭳</a>
       · ابزار عمومی و متن‌باز · توکن‌ها فقط در مرورگر خودت می‌مانند
+    </p>
+    <p class="foot-links">
+      <a href="https://offers-pishnahadat.vercel.app" target="_blank" rel="noopener">سایت کانال پیشنهادات</a> ·
+      <a href="https://zaya.io/Offers_pishnahadat" target="_blank" rel="noopener">صفحه‌های کانال</a> ·
+      <a href="https://t.me/offerspishnahadat_feedbackbot" target="_blank" rel="noopener">بات پشتیبانی</a> ·
+      <a href="https://t.me/offerspishnahadat_shop_bot" target="_blank" rel="noopener">ربات فروشگاه کانال</a>
     </p>
   </footer>
 </main>
