@@ -3,11 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="description" content="راه‌انداز و به‌روزرسان Cloudflare Worker + D1 — ابزار عمومی تحت وب، بدون نصب">
+<meta name="description" content="راه‌انداز و به‌روزرسان Cloudflare Worker + D1 — ابزار عمومی تحت وب، بدون نصب | Cloudflare Worker + D1 setup & update panel">
 <title>راه‌انداز Cloudflare Worker + D1</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙️</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800&display=swap">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800&family=Inter:wght@400;500;700;800&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -18,11 +19,17 @@
     <div class="brand">
       <span class="logo">⚙️</span>
       <div>
-        <h1>راه‌انداز Cloudflare Worker + D1</h1>
-        <p class="sub">ساخت و بروزرسانی ورکر و دیتابیس — مستقیم از مرورگر</p>
+        <h1 data-i18n="hdr.title">راه‌انداز Cloudflare Worker + D1</h1>
+        <p class="sub" data-i18n="hdr.sub">ساخت و بروزرسانی ورکر و دیتابیس — مستقیم از مرورگر</p>
       </div>
     </div>
-    <div id="connChip" class="chip chip-off" onclick="UI.openConn()">● وصل نیست</div>
+    <div class="topctl">
+      <button type="button" class="langswitch" id="langSwitch" data-lang="fa" onclick="I18N.toggle()" title="زبان / Language" aria-label="تغییر زبان / Switch language">
+        <span class="ls-globe">🌐</span>
+        <span class="ls-track"><span class="ls-knob"></span><span class="ls-opt ls-fa">فا</span><span class="ls-opt ls-en">EN</span></span>
+      </button>
+      <div id="connChip" class="chip chip-off" onclick="UI.openConn()">● وصل نیست</div>
+    </div>
   </div>
 </header>
 
@@ -30,51 +37,51 @@
 
   <!-- ═══════════ کارت اتصال ═══════════ -->
   <section id="connCard" class="card">
-    <h2>🔌 اتصال به Cloudflare</h2>
-    <p class="hint">پل، توکن و اکانت — اطلاعات حساس فقط در همین تب مرورگر می‌ماند (sessionStorage) و هرگز ذخیره یا ارسال نمی‌شود.</p>
+    <h2 data-i18n="conn.h2">🔌 اتصال به Cloudflare</h2>
+    <p class="hint" data-i18n="conn.hint">پل، توکن و اکانت — اطلاعات حساس فقط در همین تب مرورگر می‌ماند (sessionStorage) و هرگز ذخیره یا ارسال نمی‌شود.</p>
 
     <div class="field">
-      <label>آدرس پل (Bridge)</label>
+      <label data-i18n="conn.bridge.label">آدرس پل (Bridge)</label>
       <div class="row">
         <input id="fBridge" type="url" inputmode="url" dir="ltr" placeholder="https://cf-bridge.yourname.workers.dev">
-        <button class="btn btn-sm" type="button" onclick="Bridge.openModal()">نصب پل</button>
+        <button class="btn btn-sm" type="button" onclick="Bridge.openModal()" data-i18n="conn.bridge.install">نصب پل</button>
       </div>
       <p class="hint" id="bridgeHint"></p>
     </div>
 
     <div class="field">
-      <label>API Token کلادفلر</label>
-      <input id="fToken" type="password" dir="ltr" autocomplete="off" placeholder="توکن با دسترسی Workers Scripts + D1">
-      <p class="hint">ساخت سریع توکن با دقیقاً همان دسترسی‌های لازم: <a href="https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22d1%22%2C%22type%22%3A%22edit%22%7D%5D&amp;accountId=*&amp;zoneId=all&amp;name=Workers-D1-Token-byW6W" target="_blank" rel="noopener">ساخت توکن Workers + D1 ↗</a> — در صفحه‌ی باز‌شده فقط «Create Token» و بعد «Continue to overview» را بزن و توکن را همین‌جا بچسبان.</p>
+      <label data-i18n="conn.token.label">API Token کلادفلر</label>
+      <input id="fToken" type="password" dir="ltr" autocomplete="off" data-i18n-ph="conn.token.ph" placeholder="توکن با دسترسی Workers Scripts + D1">
+      <p class="hint" data-i18n-html="conn.token.hint">ساخت سریع توکن با دقیقاً همان دسترسی‌های لازم: <a href="https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22d1%22%2C%22type%22%3A%22edit%22%7D%5D&amp;accountId=*&amp;zoneId=all&amp;name=Workers-D1-Token-byW6W" target="_blank" rel="noopener">ساخت توکن Workers + D1 ↗</a> — در صفحه‌ی باز‌شده فقط «Create Token» و بعد «Continue to overview» را بزن و توکن را همین‌جا بچسبان.</p>
     </div>
 
     <div class="field">
-      <label>Account ID (اختیاری)</label>
+      <label data-i18n="conn.account.label">Account ID (اختیاری)</label>
       <div class="row">
-        <input id="fAccount" dir="ltr" placeholder="خالی بگذار — خودکار از توکن تشخیص داده می‌شود">
+        <input id="fAccount" dir="ltr" data-i18n-ph="conn.account.ph" placeholder="خالی بگذار — خودکار از توکن تشخیص داده می‌شود">
       </div>
     </div>
 
-    <button id="btnConnect" class="btn btn-primary btn-block" onclick="Conn.connect()">اتصال و راستی‌آزمایی</button>
+    <button id="btnConnect" class="btn btn-primary btn-block" onclick="Conn.connect()" data-i18n="conn.connect">اتصال و راستی‌آزمایی</button>
     <div id="connMsg" class="msg"></div>
   </section>
 
   <!-- ═══════════ تب‌ها ═══════════ -->
   <nav class="tabs" id="tabsNav" hidden>
-    <button class="tab active" data-tab="setup" onclick="UI.tab('setup')">🚀 راه‌اندازی جدید</button>
-    <button class="tab" data-tab="update" onclick="UI.tab('update')">🔄 بروزرسانی</button>
-    <button class="tab" data-tab="webhook" onclick="UI.tab('webhook')">🪝 وب‌هوک</button>
-    <button class="tab" data-tab="tools" onclick="UI.tab('tools')">🧰 ابزارها</button>
+    <button class="tab active" data-tab="setup" onclick="UI.tab('setup')" data-i18n="tab.setup">🚀 راه‌اندازی جدید</button>
+    <button class="tab" data-tab="update" onclick="UI.tab('update')" data-i18n="tab.update">🔄 بروزرسانی</button>
+    <button class="tab" data-tab="webhook" onclick="UI.tab('webhook')" data-i18n="tab.webhook">🪝 وب‌هوک</button>
+    <button class="tab" data-tab="tools" onclick="UI.tab('tools')" data-i18n="tab.tools">🧰 ابزارها</button>
   </nav>
 
   <!-- ═══════════ لینک‌های کانال پیشنهادات ═══════════ -->
   <section class="card links-card">
-    <h2>🔗 کانال پیشنهادات و پشتیبانی</h2>
+    <h2 data-i18n="links.h2">🔗 کانال پیشنهادات و پشتیبانی</h2>
     <div class="linkgrid">
-      <a class="linkbtn" href="https://offers-pishnahadat.vercel.app" target="_blank" rel="noopener">🌐 سایت کانال پیشنهادات</a>
-      <a class="linkbtn" href="https://zaya.io/Offers_pishnahadat" target="_blank" rel="noopener">📄 صفحه‌های کانال پیشنهادات</a>
-      <a class="linkbtn" href="https://t.me/offerspishnahadat_feedbackbot" target="_blank" rel="noopener">🤖 بات پشتیبانی</a>
-      <a class="linkbtn" href="https://t.me/offerspishnahadat_shop_bot" target="_blank" rel="noopener">🛒 ربات فروشگاه کانال</a>
+      <a class="linkbtn" href="https://offers-pishnahadat.vercel.app" target="_blank" rel="noopener" data-i18n="links.site">🌐 سایت کانال پیشنهادات</a>
+      <a class="linkbtn" href="https://zaya.io/Offers_pishnahadat" target="_blank" rel="noopener" data-i18n="links.pages">📄 صفحه‌های کانال پیشنهادات</a>
+      <a class="linkbtn" href="https://t.me/offerspishnahadat_feedbackbot" target="_blank" rel="noopener" data-i18n="links.support">🤖 بات پشتیبانی</a>
+      <a class="linkbtn" href="https://t.me/offerspishnahadat_shop_bot" target="_blank" rel="noopener" data-i18n="links.shop">🛒 ربات فروشگاه کانال</a>
     </div>
   </section>
 
@@ -82,93 +89,93 @@
   <section id="tab-setup" class="tabpanel">
 
     <div class="card">
-      <h2>۱) مشخصات پروژه</h2>
+      <h2 data-i18n="setup.s1">۱) مشخصات پروژه</h2>
       <div class="grid3">
         <div class="field">
-          <label>نام Worker</label>
+          <label data-i18n="setup.worker.label">نام Worker</label>
           <input id="sWorker" dir="ltr" placeholder="my-bot" autocomplete="off">
-          <p class="hint">⚠️ کلادفلر فقط <b>حروف کوچک انگلیسی، عدد و خط تیره (-)</b> را می‌پذیرد. زیرخط (_)، فاصله، حروف بزرگ و حروف فارسی مجاز نیستند — این کادر خودکار اصلاح می‌کند. مثال: <code>my-shop-bot</code></p>
+          <p class="hint" data-i18n-html="setup.worker.hint">⚠️ کلادفلر فقط <b>حروف کوچک انگلیسی، عدد و خط تیره (-)</b> را می‌پذیرد. زیرخط (_)، فاصله، حروف بزرگ و حروف فارسی مجاز نیستند — این کادر خودکار اصلاح می‌کند. مثال: <code>my-shop-bot</code></p>
           <p class="livehint" id="sWorkerHint"></p>
         </div>
         <div class="field">
-          <label>نام دیتابیس D1</label>
+          <label data-i18n="setup.d1.label">نام دیتابیس D1</label>
           <input id="sD1" dir="ltr" placeholder="my-db" autocomplete="off">
-          <p class="hint">اینجا زیرخط (_) هم مجاز است.</p>
+          <p class="hint" data-i18n="setup.d1.hint">اینجا زیرخط (_) هم مجاز است.</p>
         </div>
         <div class="field">
-          <label>نام اتصال (Binding)</label>
+          <label data-i18n="setup.binding.label">نام اتصال (Binding)</label>
           <input id="sBinding" dir="ltr" placeholder="DB" value="DB">
-          <p class="hint">همان نامی که در کد با <code>env.DB</code> صدا می‌زنی</p>
+          <p class="hint" data-i18n-html="setup.binding.hint">همان نامی که در کد با <code>env.DB</code> صدا می‌زنی</p>
         </div>
       </div>
       <div class="row gap">
-        <button class="btn" onclick="Setup.loadDefaults()">↩︎ مقادیر قبلی من</button>
+        <button class="btn" onclick="Setup.loadDefaults()" data-i18n="setup.defaults">↩︎ مقادیر قبلی من</button>
       </div>
     </div>
 
     <div class="card">
-      <h2>۲) اسکیمای دیتابیس (schema.sql)</h2>
-      <p class="hint">فایل SQL را انتخاب کن، یا متنش را بچسبان، یا از ریپو بگیر. اگر پروژه‌ات دیتابیس نمی‌خواهد، خالی بگذار و از این مرحله رد شو.</p>
+      <h2 data-i18n="setup.s2">۲) اسکیمای دیتابیس (schema.sql)</h2>
+      <p class="hint" data-i18n="setup.s2.hint">فایل SQL را انتخاب کن، یا متنش را بچسبان، یا از ریپو بگیر. اگر پروژه‌ات دیتابیس نمی‌خواهد، خالی بگذار و از این مرحله رد شو.</p>
       <div class="source">
         <div class="row gap">
-          <label class="btn btn-file">📁 انتخاب فایل SQL<input type="file" id="sSchemaFile" accept=".sql,.txt" hidden></label>
-          <button class="btn" onclick="Source.fetchRepo('schema')">☁️ دریافت از ریپو (setup.sql)</button>
+          <label class="btn btn-file"><span data-i18n="file.sql">📁 انتخاب فایل SQL</span><input type="file" id="sSchemaFile" hidden></label>
+          <button class="btn" onclick="Source.fetchRepo('schema')" data-i18n="repo.schema">☁️ دریافت از ریپو (setup.sql)</button>
           <span class="badge" id="sSchemaName">—</span>
         </div>
         <textarea id="sSchemaText" dir="ltr" rows="6" placeholder="-- CREATE TABLE ..."></textarea>
       </div>
       <div class="row gap">
-        <button class="btn btn-ok" onclick="Setup.stepD1()">🟢 ساخت D1 + اجرای اسکیما</button>
+        <button class="btn btn-ok" onclick="Setup.stepD1()" data-i18n="setup.d1run">🟢 ساخت D1 + اجرای اسکیما</button>
       </div>
       <div class="stepmsg" id="msgD1"></div>
     </div>
 
     <div class="card">
-      <h2>۳) کد Worker (worker.js)</h2>
-      <p class="hint">کد باید ES Module باشد (شامل <code>export default</code>). می‌توانی فایل بدهی، بچسبانی، یا آخرین نسخه را از ریپو بگیری.</p>
+      <h2 data-i18n="setup.s3">۳) کد Worker (worker.js)</h2>
+      <p class="hint" data-i18n-html="setup.s3.hint">کد باید ES Module باشد (شامل <code>export default</code>). می‌توانی فایل بدهی، بچسبانی، یا آخرین نسخه را از ریپو بگیری.</p>
       <div class="source">
         <div class="row gap">
-          <label class="btn btn-file">📁 انتخاب فایل JS<input type="file" id="sCodeFile" accept=".js,.mjs,.txt" hidden></label>
-          <button class="btn" onclick="Source.fetchRepo('worker')">☁️ دریافت از ریپو (worker.js)</button>
+          <label class="btn btn-file"><span data-i18n="file.js">📁 انتخاب فایل JS</span><input type="file" id="sCodeFile" accept=".js,.mjs,.txt,text/javascript,text/plain" hidden></label>
+          <button class="btn" onclick="Source.fetchRepo('worker')" data-i18n="repo.worker">☁️ دریافت از ریپو (worker.js)</button>
           <span class="badge" id="sCodeName">—</span>
         </div>
         <textarea id="sCodeText" dir="ltr" rows="8" placeholder="export default { fetch(req, env) { ... } }"></textarea>
       </div>
       <details class="adv">
-        <summary>متغیرها و Secretها (اختیاری)</summary>
+        <summary data-i18n="setup.vars.sum">متغیرها و Secretها (اختیاری)</summary>
         <div id="sVars" class="vars"></div>
-        <button class="btn btn-sm" onclick="Vars.add('sVars')">+ افزودن متغیر</button>
-        <p class="hint">🔒 = Secret (مقدارش بعد از ذخیره خوانده نمی‌شود). BOT_TOKEN و ADMIN_IDS رایج‌ترین‌ها هستند.</p>
+        <button class="btn btn-sm" onclick="Vars.add('sVars')" data-i18n="vars.add">+ افزودن متغیر</button>
+        <p class="hint" data-i18n="setup.vars.hint">🔒 = Secret (مقدارش بعد از ذخیره خوانده نمی‌شود). BOT_TOKEN و ADMIN_IDS رایج‌ترین‌ها هستند.</p>
       </details>
       <div class="row gap">
-        <button class="btn btn-ok" onclick="Setup.stepDeploy()">🟢 آپلود و دیپلوی Worker</button>
+        <button class="btn btn-ok" onclick="Setup.stepDeploy()" data-i18n="setup.deploy">🟢 آپلود و دیپلوی Worker</button>
       </div>
       <div class="stepmsg" id="msgDeploy"></div>
     </div>
 
     <div class="card">
-      <h2>۴) وب‌هوک (اختیاری)</h2>
+      <h2 data-i18n="setup.s4">۴) وب‌هوک (اختیاری)</h2>
       <div class="grid2">
         <div class="field">
-          <label>پلتفرم</label>
+          <label data-i18n="label.platform">پلتفرم</label>
           <select id="sHookPlatform">
-            <option value="bale">بله (Bale)</option>
-            <option value="telegram">تلگرام (Telegram)</option>
+            <option value="bale" data-i18n="opt.bale">بله (Bale)</option>
+            <option value="telegram" data-i18n="opt.telegram">تلگرام (Telegram)</option>
           </select>
         </div>
         <div class="field">
-          <label>توکن ربات</label>
-          <input id="sHookToken" type="password" dir="ltr" autocomplete="off" placeholder="123456:ABC-...">
+          <label data-i18n="label.token">توکن ربات</label>
+          <input id="sHookToken" type="password" dir="ltr" autocomplete="off" data-i18n-ph="token.ph" placeholder="123456:ABC-...">
         </div>
       </div>
       <div class="field">
-        <label>مسیر وب‌هوک (اختیاری)</label>
-        <input id="sHookPath" dir="ltr" placeholder="خالی بگذار = ریشه ورکر (/)">
-        <p class="hint">ربات‌های ساخته‌شده با این پنل آپدیت‌ها را در <b>ریشه</b> می‌گیرند؛ فقط اگر کد ورکرت مسیر خاصی می‌خواهد (مثل <code>/webhook</code>) اینجا بنویس. مسیر اشتباه = قطع شدن ربات.</p>
+        <label data-i18n="setup.path.label">مسیر وب‌هوک (اختیاری)</label>
+        <input id="sHookPath" dir="ltr" data-i18n-ph="setup.path.ph" placeholder="خالی بگذار = ریشه ورکر (/)">
+        <p class="hint" data-i18n-html="setup.path.hint">ربات‌های ساخته‌شده با این پنل آپدیت‌ها را در <b>ریشه</b> می‌گیرند؛ فقط اگر کد ورکرت مسیر خاصی می‌خواهد (مثل <code>/webhook</code>) اینجا بنویس. مسیر اشتباه = قطع شدن ربات.</p>
       </div>
       <div class="row gap">
-        <button class="btn" onclick="Setup.stepWebhook()">🪝 تنظیم وب‌هوک</button>
-        <button class="btn btn-primary" onclick="Setup.runAll()">▶️ اجرای خودکار همه مراحل</button>
+        <button class="btn" onclick="Setup.stepWebhook()" data-i18n="hook.set">🪝 تنظیم وب‌هوک</button>
+        <button class="btn btn-primary" onclick="Setup.runAll()" data-i18n="setup.runall">▶️ اجرای خودکار همه مراحل</button>
       </div>
       <div class="stepmsg" id="msgHook"></div>
     </div>
@@ -178,93 +185,93 @@
   <section id="tab-update" class="tabpanel" hidden>
 
     <div class="card">
-      <h2>حالت بروزرسانی را انتخاب کن</h2>
+      <h2 data-i18n="upd.mode">حالت بروزرسانی را انتخاب کن</h2>
       <div class="seg" role="tablist">
-        <button class="segbtn active" data-seg="uWorker" onclick="UI.seg('uWorker')">کد Worker</button>
-        <button class="segbtn" data-seg="uD1" onclick="UI.seg('uD1')">دیتابیس D1</button>
-        <button class="segbtn" data-seg="uVars" onclick="UI.seg('uVars')">متغیرها / Bindings</button>
+        <button class="segbtn active" data-seg="uWorker" onclick="UI.seg('uWorker')" data-i18n="seg.code">کد Worker</button>
+        <button class="segbtn" data-seg="uD1" onclick="UI.seg('uD1')" data-i18n="seg.d1">دیتابیس D1</button>
+        <button class="segbtn" data-seg="uVars" onclick="UI.seg('uVars')" data-i18n="seg.vars">متغیرها / Bindings</button>
       </div>
     </div>
 
     <!-- ── بروزرسانی کد ورکر ── -->
     <div id="seg-uWorker" class="card segpanel">
-      <h2>🔄 بروزرسانی کد Worker</h2>
+      <h2 data-i18n="upd.code.h2">🔄 بروزرسانی کد Worker</h2>
       <div class="field">
-        <label>Worker موجود</label>
+        <label data-i18n="upd.worker.label">Worker موجود</label>
         <div class="row">
-          <input id="uWorkerName" dir="ltr" list="workerList" placeholder="نام ورکر یا از لیست انتخاب کن">
+          <input id="uWorkerName" dir="ltr" list="workerList" data-i18n-ph="workerpick.ph" placeholder="نام ورکر یا از لیست انتخاب کن">
           <datalist id="workerList"></datalist>
-          <button class="btn btn-sm" onclick="Update.listWorkers()">دریافت لیست</button>
+          <button class="btn btn-sm" onclick="Update.listWorkers()" data-i18n="upd.list">دریافت لیست</button>
         </div>
         <div id="workerPick" class="pick"></div>
         <p class="livehint" id="uWorkerHint"></p>
       </div>
       <div class="source">
         <div class="row gap">
-          <label class="btn btn-file">📁 فایل JS<input type="file" id="uCodeFile" accept=".js,.mjs,.txt" hidden></label>
-          <button class="btn" onclick="Source.fetchRepo('workerU')">☁️ دریافت از ریپو (worker.js)</button>
+          <label class="btn btn-file"><span data-i18n="file.js">📁 فایل JS</span><input type="file" id="uCodeFile" accept=".js,.mjs,.txt,text/javascript,text/plain" hidden></label>
+          <button class="btn" onclick="Source.fetchRepo('workerU')" data-i18n="repo.worker">☁️ دریافت از ریپو (worker.js)</button>
           <span class="badge" id="uCodeName">—</span>
         </div>
         <textarea id="uCodeText" dir="ltr" rows="8" placeholder="export default { fetch(req, env) { ... } }"></textarea>
       </div>
       <details class="adv">
-        <summary>متغیرها و Secretها (اختیاری — فقط اگر بخواهی عوض شوند)</summary>
+        <summary data-i18n="upd.code.src.sum">متغیرها و Secretها (اختیاری — فقط اگر بخواهی عوض شوند)</summary>
         <div id="uVars" class="vars"></div>
-        <button class="btn btn-sm" onclick="Vars.add('uVars')">+ افزودن</button>
-        <p class="hint">خالی بگذاری = متغیرها و Secretهای قبلی دست‌نخورده می‌مانند.</p>
+        <button class="btn btn-sm" onclick="Vars.add('uVars')" data-i18n="vars.add2">+ افزودن</button>
+        <p class="hint" data-i18n="upd.vars.hint">خالی بگذاری = متغیرها و Secretهای قبلی دست‌نخورده می‌مانند.</p>
       </details>
-      <label class="check"><input type="checkbox" id="uKeep" checked> حفظ Bindings و Secretهای قبلی (پیشنهادی)</label>
+      <label class="check"><input type="checkbox" id="uKeep" checked> <span data-i18n="upd.keep">حفظ Bindings و Secretهای قبلی (پیشنهادی)</span></label>
       <div class="row gap">
-        <button class="btn btn-ok" onclick="Update.deploy()">🟢 بروزرسانی Worker</button>
+        <button class="btn btn-ok" onclick="Update.deploy()" data-i18n="upd.deploy">🟢 بروزرسانی Worker</button>
       </div>
       <div class="stepmsg" id="msgUWorker"></div>
     </div>
 
     <!-- ── بروزرسانی D1 ── -->
     <div id="seg-uD1" class="card segpanel" hidden>
-      <h2>🗄️ اجرای SQL روی D1</h2>
+      <h2 data-i18n="upd.d1.h2">🗄️ اجرای SQL روی D1</h2>
       <div class="field">
-        <label>دیتابیس</label>
+        <label data-i18n="upd.db.label">دیتابیس</label>
         <div class="row">
           <select id="uD1Select"></select>
-          <button class="btn btn-sm" onclick="Update.listD1()">دریافت لیست</button>
+          <button class="btn btn-sm" onclick="Update.listD1()" data-i18n="upd.list">دریافت لیست</button>
         </div>
       </div>
       <div class="source">
         <div class="row gap">
-          <label class="btn btn-file">📁 فایل SQL<input type="file" id="uSqlFile" accept=".sql,.txt" hidden></label>
-          <button class="btn" onclick="Source.fetchRepo('sqlU')">☁️ دریافت از ریپو (setup.sql)</button>
+          <label class="btn btn-file"><span data-i18n="file.sql">📁 فایل SQL</span><input type="file" id="uSqlFile" hidden></label>
+          <button class="btn" onclick="Source.fetchRepo('sqlU')" data-i18n="repo.schema">☁️ دریافت از ریپو (setup.sql)</button>
           <span class="badge" id="uSqlName">—</span>
         </div>
-        <textarea id="uSqlText" dir="ltr" rows="8" placeholder="UPDATE ... ; ALTER TABLE ... ;"></textarea>
+        <textarea id="uSqlText" dir="ltr" rows="8" data-i18n-ph="upd.sql.ph" placeholder="UPDATE ... ; ALTER TABLE ... ;"></textarea>
       </div>
-      <p class="hint warn">⚠️ اگر جدول قبلاً ساخته شده باشد، CREATE دوباره خطا می‌دهد (مگر IF NOT EXISTS داشته باشد).</p>
+      <p class="hint warn" data-i18n="upd.d1.hint">⚠️ اگر جدول قبلاً ساخته شده باشد، CREATE دوباره خطا می‌دهد (مگر IF NOT EXISTS داشته باشد).</p>
       <div class="row gap">
-        <button class="btn btn-ok" onclick="Update.runSql()">🟢 اجرای SQL</button>
+        <button class="btn btn-ok" onclick="Update.runSql()" data-i18n="upd.runsql">🟢 اجرای SQL</button>
       </div>
       <div class="stepmsg" id="msgUD1"></div>
     </div>
 
     <!-- ── مشاهده/ویرایش Bindings ── -->
     <div id="seg-uVars" class="card segpanel" hidden>
-      <h2>🧩 متغیرها و Bindings فعلی</h2>
+      <h2 data-i18n="upd.vars.h2">🧩 متغیرها و Bindings فعلی</h2>
       <div class="field">
-        <label>Worker</label>
+        <label data-i18n="upd.worker.label">Worker</label>
         <div class="row">
-          <input id="uVarsWorker" dir="ltr" list="workerList" placeholder="نام ورکر">
-          <button class="btn btn-sm" onclick="Update.listWorkers()">لیست</button>
-          <button class="btn btn-sm" onclick="Update.showBindings()">مشاهده</button>
+          <input id="uVarsWorker" dir="ltr" list="workerList" data-i18n-ph="workerpick.ph" placeholder="نام ورکر">
+          <button class="btn btn-sm" onclick="Update.listWorkers()" data-i18n="upd.list">لیست</button>
+          <button class="btn btn-sm" onclick="Update.showBindings()" data-i18n="upd.show">مشاهده</button>
         </div>
         <div id="workerPick2" class="pick"></div>
         <p class="livehint" id="uVarsWorkerHint"></p>
       </div>
       <div id="bindingsView" class="bindings"></div>
       <details class="adv" id="varsEditWrap" hidden>
-        <summary>ویرایش و ذخیره (بدون تغییر کد)</summary>
+        <summary data-i18n="upd.edit.sum">ویرایش و ذخیره (بدون تغییر کد)</summary>
         <div id="uVarsQuick" class="vars"></div>
-        <button class="btn btn-sm" onclick="Vars.add('uVarsQuick')">+ افزودن متغیر/Secret</button>
-        <p class="hint">مقادیر جدید جایگزین هم‌نام‌ها می‌شوند؛ سایر Bindings (D1/KV/…) حفظ می‌شوند.</p>
-        <div class="row gap"><button class="btn btn-ok" onclick="Update.saveBindings()">🟢 ذخیره متغیرها</button></div>
+        <button class="btn btn-sm" onclick="Vars.add('uVarsQuick')" data-i18n="vars.add3">+ افزودن متغیر/Secret</button>
+        <p class="hint" data-i18n="upd.edit.hint">مقادیر جدید جایگزین هم‌نام‌ها می‌شوند؛ سایر Bindings (D1/KV/…) حفظ می‌شوند.</p>
+        <div class="row gap"><button class="btn btn-ok" onclick="Update.saveBindings()" data-i18n="upd.save">🟢 ذخیره متغیرها</button></div>
       </details>
       <div class="stepmsg" id="msgUVars"></div>
     </div>
@@ -273,42 +280,42 @@
   <!-- ═══════════ تب ۳: وب‌هوک ═══════════ -->
   <section id="tab-webhook" class="tabpanel" hidden>
     <div class="card">
-      <h2>🪝 تنظیم وب‌هوک ربات</h2>
-      <p class="hint">آدرس وب‌هوک = آدرس ورکر روی workers.dev + مسیر (اختیاری). <b>ربات‌های ساخته‌شده با این پنل آپدیت‌ها را در ریشه می‌گیرند</b> — یعنی کادر «مسیر» را معمولاً خالی بگذار. مسیر اشتباه یا آدرس مرده = قطع شدن ربات.</p>
+      <h2 data-i18n="wh.h2">🪝 تنظیم وب‌هوک ربات</h2>
+      <p class="hint" data-i18n-html="wh.hint">آدرس وب‌هوک = آدرس ورکر روی workers.dev + مسیر (اختیاری). <b>ربات‌های ساخته‌شده با این پنل آپدیت‌ها را در ریشه می‌گیرند</b> — یعنی کادر «مسیر» را معمولاً خالی بگذار. مسیر اشتباه یا آدرس مرده = قطع شدن ربات.</p>
       <div class="grid2">
         <div class="field">
-          <label>پلتفرم</label>
+          <label data-i18n="label.platform">پلتفرم</label>
           <select id="wPlatform">
-            <option value="telegram">تلگرام (Telegram)</option>
-            <option value="bale">بله (Bale)</option>
+            <option value="telegram" data-i18n="opt.telegram">تلگرام (Telegram)</option>
+            <option value="bale" data-i18n="opt.bale">بله (Bale)</option>
           </select>
         </div>
         <div class="field">
-          <label>توکن ربات</label>
-          <input id="wBotToken" type="password" dir="ltr" autocomplete="off" placeholder="123456:ABC-...">
+          <label data-i18n="label.token">توکن ربات</label>
+          <input id="wBotToken" type="password" dir="ltr" autocomplete="off" data-i18n-ph="token.ph" placeholder="123456:ABC-...">
         </div>
         <div class="field">
-          <label>آدرس ورکر</label>
-          <input id="wWorkerUrl" dir="ltr" inputmode="url" placeholder="https://my-bot.xxx.workers.dev">
-          <p class="hint" id="wUrlHint">بعد از دیپلوی موفق، خودکار پر می‌شود.</p>
+          <label data-i18n="wh.url.label">آدرس ورکر</label>
+          <input id="wWorkerUrl" dir="ltr" inputmode="url" data-i18n-ph="wh.url.ph" placeholder="https://my-bot.xxx.workers.dev">
+          <p class="hint" id="wUrlHint" data-i18n="wh.url.hint">بعد از دیپلوی موفق، خودکار پر می‌شود.</p>
         </div>
         <div class="field">
-          <label>مسیر وب‌هوک (معمولاً خالی)</label>
-          <input id="wPath" dir="ltr" placeholder="خالی = ریشه ورکر (/)">
+          <label data-i18n="wh.path.label">مسیر وب‌هوک (معمولاً خالی)</label>
+          <input id="wPath" dir="ltr" data-i18n-ph="wh.path.ph" placeholder="خالی = ریشه ورکر (/)">
         </div>
       </div>
-      <label class="check"><input type="checkbox" id="wDrop"> پاک کردن پیام‌های عقب‌افتاده بعد از تغییر (drop_pending_updates)</label>
+      <label class="check"><input type="checkbox" id="wDrop"> <span data-i18n="wh.drop">پاک کردن پیام‌های عقب‌افتاده بعد از تغییر (drop_pending_updates)</span></label>
       <div class="row gap">
-        <button class="btn btn-ok" onclick="Webhook.set()">🪝 تنظیم وب‌هوک</button>
-        <button class="btn" onclick="Webhook.info()">📋 وضعیت فعلی وب‌هوک</button>
-        <button class="btn" onclick="Webhook.remove()">✂️ قطع وب‌هوک</button>
-        <button class="btn" onclick="Webhook.genManual('set')">🖥 دستور دستی</button>
+        <button class="btn btn-ok" onclick="Webhook.set()" data-i18n="hook.set">🪝 تنظیم وب‌هوک</button>
+        <button class="btn" onclick="Webhook.info()" data-i18n="wh.info">📋 وضعیت فعلی وب‌هوک</button>
+        <button class="btn" onclick="Webhook.remove()" data-i18n="wh.remove">✂️ قطع وب‌هوک</button>
+        <button class="btn" onclick="Webhook.genManual('set')" data-i18n="wh.manual">🖥 دستور دستی</button>
       </div>
       <div class="stepmsg" id="msgWebhook"></div>
       <details class="adv" id="hookFallback" hidden>
-        <summary>روش دستی (اگر درخواست مستقیم از مرورگر رد شد)</summary>
-        <p class="hint">این دستور را در Termux یا کامپیوتر اجرا کن (خروجی JSON با <code>"ok":true</code> یعنی موفق):</p>
-        <div class="row"><textarea id="hookCmd" dir="ltr" rows="3" readonly></textarea><button class="btn btn-sm" onclick="UI.copy('hookCmd')">کپی</button></div>
+        <summary data-i18n="wh.fallback.sum">روش دستی (اگر درخواست مستقیم از مرورگر رد شد)</summary>
+        <p class="hint" data-i18n-html="wh.fallback.hint">این دستور را در Termux یا کامپیوتر اجرا کن (خروجی JSON با <code>"ok":true</code> یعنی موفق):</p>
+        <div class="row"><textarea id="hookCmd" dir="ltr" rows="3" readonly></textarea><button class="btn btn-sm" onclick="UI.copy('hookCmd')" data-i18n="copy">کپی</button></div>
       </details>
     </div>
   </section>
@@ -316,88 +323,88 @@
   <!-- ═══════════ تب ۴: ابزارها — Cron + عیب‌یابی ═══════════ -->
   <section id="tab-tools" class="tabpanel" hidden>
     <div class="card">
-      <h2>🎯 ورکر هدف</h2>
+      <h2 data-i18n="tl.target.h2">🎯 ورکر هدف</h2>
       <div class="field">
         <div class="row">
-          <input id="tWorker" dir="ltr" list="workerList" placeholder="نام ورکر یا از لیست انتخاب کن">
-          <button class="btn btn-sm" onclick="Update.listWorkers()">دریافت لیست</button>
+          <input id="tWorker" dir="ltr" list="workerList" data-i18n-ph="workerpick.ph" placeholder="نام ورکر یا از لیست انتخاب کن">
+          <button class="btn btn-sm" onclick="Update.listWorkers()" data-i18n="upd.list">دریافت لیست</button>
         </div>
         <div id="workerPick3" class="pick"></div>
       </div>
       <div class="field">
-        <label>آدرس ورکر (برای تست سلامت — خالی = خودکار ساخته می‌شود)</label>
-        <input id="tWorkerUrl" dir="ltr" inputmode="url" placeholder="https://my-bot.xxx.workers.dev">
+        <label data-i18n="tl.url.label">آدرس ورکر (برای تست سلامت — خالی = خودکار ساخته می‌شود)</label>
+        <input id="tWorkerUrl" dir="ltr" inputmode="url" data-i18n-ph="wh.url.ph" placeholder="https://my-bot.xxx.workers.dev">
       </div>
     </div>
 
     <div class="card">
-      <h2>⏰ Cron Triggers (زمان‌بندی)</h2>
-      <p class="hint">زمان‌بندی‌های فعلی ورکر را ببین، اضافه/حذف کن و ذخیره کن. برای اجرا، کد ورکر باید هندلر <code>scheduled</code> داشته باشد.</p>
+      <h2 data-i18n="tl.cron.h2">⏰ Cron Triggers (زمان‌بندی)</h2>
+      <p class="hint" data-i18n-html="tl.cron.hint">زمان‌بندی‌های فعلی ورکر را ببین، اضافه/حذف کن و ذخیره کن. برای اجرا، کد ورکر باید هندلر <code>scheduled</code> داشته باشد.</p>
       <div class="row gap">
-        <button class="btn" onclick="Tools.cronLoad()">📋 نمایش زمان‌بندی فعلی</button>
+        <button class="btn" onclick="Tools.cronLoad()" data-i18n="tl.cron.show">📋 نمایش زمان‌بندی فعلی</button>
       </div>
       <div id="cronList" class="cronlist"></div>
       <div class="field">
-        <label>افزودن عبارت Cron</label>
+        <label data-i18n="tl.cron.addlabel">افزودن عبارت Cron</label>
         <div class="row">
           <input id="cronInput" dir="ltr" placeholder="*/5 * * * *">
-          <button class="btn btn-sm" onclick="Tools.cronAdd()">+ افزودن</button>
+          <button class="btn btn-sm" onclick="Tools.cronAdd()" data-i18n="cron.addbtn">+ افزودن</button>
         </div>
-        <p class="hint">قالب استاندارد ۵ فیلدی: دقیقه، ساعت، روزِماه، ماه، روزِهفته. نمونه: <code>*/5 * * * *</code> هر ۵ دقیقه — <code>0 8 * * *</code> هر روز ساعت ۸ صبح.</p>
+        <p class="hint" data-i18n-html="tl.cron.hint2">قالب استاندارد ۵ فیلدی: دقیقه، ساعت، روزِماه، ماه، روزِهفته. نمونه: <code>*/5 * * * *</code> هر ۵ دقیقه — <code>0 8 * * *</code> هر روز ساعت ۸ صبح.</p>
         <div class="row gap">
-          <button class="btn btn-sm" onclick="Tools.cronPreset('*/5 * * * *')">هر ۵ دقیقه</button>
-          <button class="btn btn-sm" onclick="Tools.cronPreset('0 * * * *')">هر ساعت</button>
-          <button class="btn btn-sm" onclick="Tools.cronPreset('0 8 * * *')">روزانه ۸ صبح</button>
-          <button class="btn btn-sm" onclick="Tools.cronPreset('0 0 * * *')">نیمه‌شب</button>
+          <button class="btn btn-sm" onclick="Tools.cronPreset('*/5 * * * *')" data-i18n="cron.p1">هر ۵ دقیقه</button>
+          <button class="btn btn-sm" onclick="Tools.cronPreset('0 * * * *')" data-i18n="cron.p2">هر ساعت</button>
+          <button class="btn btn-sm" onclick="Tools.cronPreset('0 8 * * *')" data-i18n="cron.p3">روزانه ۸ صبح</button>
+          <button class="btn btn-sm" onclick="Tools.cronPreset('0 0 * * *')" data-i18n="cron.p4">نیمه‌شب</button>
         </div>
       </div>
       <div class="row gap">
-        <button class="btn btn-ok" onclick="Tools.cronSave()">🟢 ذخیره زمان‌بندی‌ها</button>
-        <a class="btn" id="cronDashLink" href="https://dash.cloudflare.com/" target="_blank" rel="noopener">در داشبورد ↗</a>
+        <button class="btn btn-ok" onclick="Tools.cronSave()" data-i18n="tl.cron.save">🟢 ذخیره زمان‌بندی‌ها</button>
+        <a class="btn" id="cronDashLink" href="https://dash.cloudflare.com/" target="_blank" rel="noopener" data-i18n="tl.cron.dash">در داشبورد ↗</a>
       </div>
       <div class="stepmsg" id="msgCron"></div>
     </div>
 
     <div class="card">
-      <h2>🩺 عیب‌یابی و لاگ</h2>
+      <h2 data-i18n="tl.diag.h2">🩺 عیب‌یابی و لاگ</h2>
       <div class="row gap">
-        <button class="btn" onclick="Tools.probeWorker()">🔎 تست سلامت ورکر</button>
-        <button class="btn" onclick="Tools.botStatus()">🤖 وضعیت ربات و وب‌هوک</button>
-        <a class="btn" id="dashWorkerLink" href="https://dash.cloudflare.com/" target="_blank" rel="noopener">صفحه ورکر در داشبورد ↗</a>
-        <a class="btn" id="dashLogsLink" href="https://dash.cloudflare.com/" target="_blank" rel="noopener">لاگ‌ها در داشبورد ↗</a>
+        <button class="btn" onclick="Tools.probeWorker()" data-i18n="tl.probe">🔎 تست سلامت ورکر</button>
+        <button class="btn" onclick="Tools.botStatus()" data-i18n="tl.botstatus">🤖 وضعیت ربات و وب‌هوک</button>
+        <a class="btn" id="dashWorkerLink" href="https://dash.cloudflare.com/" target="_blank" rel="noopener" data-i18n="tl.dash.worker">صفحه ورکر در داشبورد ↗</a>
+        <a class="btn" id="dashLogsLink" href="https://dash.cloudflare.com/" target="_blank" rel="noopener" data-i18n="tl.dash.logs">لاگ‌ها در داشبورد ↗</a>
       </div>
       <div class="grid2">
         <div class="field">
-          <label>پلتفرم ربات</label>
+          <label data-i18n="tl.platform.label">پلتفرم ربات</label>
           <select id="tPlatform">
-            <option value="telegram">تلگرام (Telegram)</option>
-            <option value="bale">بله (Bale)</option>
+            <option value="telegram" data-i18n="opt.telegram">تلگرام (Telegram)</option>
+            <option value="bale" data-i18n="opt.bale">بله (Bale)</option>
           </select>
         </div>
         <div class="field">
-          <label>توکن ربات (برای «وضعیت ربات»)</label>
-          <input id="tBotToken" type="password" dir="ltr" autocomplete="off" placeholder="123456:ABC-...">
+          <label data-i18n="tl.token.label">توکن ربات (برای «وضعیت ربات»)</label>
+          <input id="tBotToken" type="password" dir="ltr" autocomplete="off" data-i18n-ph="token.ph" placeholder="123456:ABC-...">
         </div>
       </div>
       <div id="diagOut" class="diag"></div>
       <div class="stepmsg" id="msgDiag"></div>
-      <p class="hint">راهنمای عیب‌یابی: اگر «وضعیت ربات» خطای last_error نشان داد، اول «تست سلامت ورکر» را بزن. اگر ورکر زنده بود، مسیر وب‌هوک را با کد مقایسه کن (ربات‌های این پنل: ریشه). اگر ورکر مرده بود، از تب «بروزرسانی» دوباره دیپلوی کن و بعد وب‌هوک را دوباره ست کن.</p>
+      <p class="hint" data-i18n="tl.diag.hint">راهنمای عیب‌یابی: اگر «وضعیت ربات» خطای last_error نشان داد، اول «تست سلامت ورکر» را بزن. اگر ورکر زنده بود، مسیر وب‌هوک را با کد مقایسه کن (ربات‌های این پنل: ریشه). اگر ورکر مرده بود، از تب «بروزرسانی» دوباره دیپلوی کن و بعد وب‌هوک را دوباره ست کن.</p>
     </div>
   </section>
 
   <!-- ═══════════ گزارش زنده ═══════════ -->
   <section class="card" id="logCard" hidden>
-    <h2>📜 گزارش اجرا</h2>
-    <div id="log" class="log" dir="rtl"></div>
-    <div class="row gap"><button class="btn btn-sm" onclick="Log.copy()">📋 کپی گزارش</button><button class="btn btn-sm" onclick="Log.clear()">پاک کردن</button></div>
+    <h2 data-i18n="log.h2">📜 گزارش اجرا</h2>
+    <div id="log" class="log" dir="auto"></div>
+    <div class="row gap"><button class="btn btn-sm" onclick="Log.copy()" data-i18n="log.copy">📋 کپی گزارش</button><button class="btn btn-sm" onclick="Log.clear()" data-i18n="log.clear">پاک کردن</button></div>
   </section>
 
   <footer class="foot">
-    <p>
+    <p data-i18n-html="foot.main">
       <a href="https://github.com/Alireza123456w6w/simple_cloudfire_worker_changer" target="_blank" rel="noopener">ریپوی گیت‌هاب ⭳</a>
       · ابزار عمومی و متن‌باز · توکن‌ها فقط در مرورگر خودت می‌مانند
     </p>
-    <p class="foot-links">
+    <p class="foot-links" data-i18n-html="foot.links">
       <a href="https://offers-pishnahadat.vercel.app" target="_blank" rel="noopener">سایت کانال پیشنهادات</a> ·
       <a href="https://zaya.io/Offers_pishnahadat" target="_blank" rel="noopener">صفحه‌های کانال</a> ·
       <a href="https://t.me/offerspishnahadat_feedbackbot" target="_blank" rel="noopener">بات پشتیبانی</a> ·
@@ -410,24 +417,24 @@
 <div id="bridgeModal" class="modal" hidden>
   <div class="modal-box">
     <button class="modal-x" onclick="Bridge.closeModal()">✕</button>
-    <h2>🌉 نصب پل — فقط یک بار، بدون ترمینال</h2>
-    <p class="hint">
+    <h2 data-i18n="bm.h2">🌉 نصب پل — فقط یک بار، بدون ترمینال</h2>
+    <p class="hint" data-i18n-html="bm.hint">
       <b>چرا پل؟</b> سایت Pages سرور ندارد و <code>api.cloudflare.com</code> هم اجازه اتصال مستقیم مرورگر را نمی‌دهد (CORS بسته است).
       پل یک ورکر کوچک در <b>خود اکانت کلادفلر تو</b> است که فقط درخواست‌های خودت را رد می‌کند — هیچ چیزی ذخیره نمی‌کند و کدش کاملاً شفاف است.
       این نصب فقط یک بار است؛ بعدش همه‌چیز از همین صفحه با موبایل انجام می‌شود.
     </p>
 
     <div class="field">
-      <label>۱) کد پل را کپی کن</label>
+      <label data-i18n="bm.step1">۱) کد پل را کپی کن</label>
       <div class="row">
-        <button class="btn btn-primary" type="button" onclick="Bridge.copyCode()">📋 کپی کد پل</button>
-        <span class="badge">~۴۰ خط JavaScript</span>
+        <button class="btn btn-primary" type="button" onclick="Bridge.copyCode()" data-i18n="bm.copycode">📋 کپی کد پل</button>
+        <span class="badge" data-i18n="bm.badge">~۴۰ خط JavaScript</span>
       </div>
     </div>
 
     <div class="field">
-      <label>۲) در داشبورد کلادفلر یک Worker بساز و کد را جایگزین کن</label>
-      <p class="hint">
+      <label data-i18n="bm.step2">۲) در داشبورد کلادفلر یک Worker بساز و کد را جایگزین کن</label>
+      <p class="hint" data-i18n-html="bm.step2.hint">
         <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">باز کردن داشبورد ↗</a>
         ← <b>Workers &amp; Pages</b> ← <b>Create</b> ← قالب Hello World ← Deploy ← دکمه <b>Edit code</b>
         ← همه‌چیز را پاک کن و کد کپی‌شده را بچسبان ← <b>Deploy</b>. بدون Account ID و بدون Termux.
@@ -435,42 +442,42 @@
     </div>
 
     <div class="field">
-      <label>۳) آدرس ورکر را اینجا بچسبان</label>
+      <label data-i18n="bm.step3">۳) آدرس ورکر را اینجا بچسبان</label>
       <div class="row">
         <input id="bUrl" type="url" dir="ltr" inputmode="url" placeholder="https://cf-bridge.xxx.workers.dev">
-        <button class="btn btn-sm" type="button" onclick="Bridge.openBridge()">↗︎ باز کردن</button>
+        <button class="btn btn-sm" type="button" onclick="Bridge.openBridge()" data-i18n="bm.open">↗︎ باز کردن</button>
       </div>
-      <p class="hint">میان‌بر: آدرس پل را در مرورگر باز کن — خودش برمی‌گردد به همین صفحه و آدرس را پر می‌کند.</p>
+      <p class="hint" data-i18n="bm.step3.hint">میان‌بر: آدرس پل را در مرورگر باز کن — خودش برمی‌گردد به همین صفحه و آدرس را پر می‌کند.</p>
     </div>
 
-    <button class="btn btn-primary btn-block" onclick="Bridge.testAndSave()">تست و ذخیره پل</button>
+    <button class="btn btn-primary btn-block" onclick="Bridge.testAndSave()" data-i18n="bm.test">تست و ذخیره پل</button>
     <div id="bridgeMsg" class="msg"></div>
 
     <details class="adv">
-      <summary>روش جایگزین: Termux / کامپیوتر با curl (توکن + Account ID لازم دارد)</summary>
+      <summary data-i18n="bm.alt.sum">روش جایگزین: Termux / کامپیوتر با curl (توکن + Account ID لازم دارد)</summary>
       <div class="field">
-        <label>API Token (برای ساختن پل لازم است)</label>
-        <input id="bToken" type="password" dir="ltr" autocomplete="off" placeholder="همان توکنی که برای اتصال می‌دهی">
+        <label data-i18n="bm.token.label">API Token (برای ساختن پل لازم است)</label>
+        <input id="bToken" type="password" dir="ltr" autocomplete="off" data-i18n-ph="bm.token.ph" placeholder="همان توکنی که برای اتصال می‌دهی">
       </div>
       <div class="field">
-        <label>Account ID</label>
-        <input id="bAccount" dir="ltr" placeholder="از نوار آدرس داشبورد کلادفلر">
-        <p class="hint">Account ID را از نوار آدرس داشبورد کپی کن</p>
+        <label data-i18n="bm.account.label">Account ID</label>
+        <input id="bAccount" dir="ltr" data-i18n-ph="bm.account.ph" placeholder="از نوار آدرس داشبورد کلادفلر">
+        <p class="hint" data-i18n="bm.account.hint">Account ID را از نوار آدرس داشبورد کپی کن</p>
       </div>
       <div class="field">
-        <label>این دستور را کپی و در Termux / کامپیوتر اجرا کن</label>
+        <label data-i18n="bm.cmd.label">این دستور را کپی و در Termux / کامپیوتر اجرا کن</label>
         <div class="row">
           <textarea id="bCmd" dir="ltr" rows="4" readonly></textarea>
-          <button class="btn btn-sm" onclick="UI.copy('bCmd')">کپی</button>
+          <button class="btn btn-sm" onclick="UI.copy('bCmd')" data-i18n="copy">کپی</button>
         </div>
-        <p class="hint">کل دستور انگلیسی است و آخرش خط <code>Bridge URL: https://cf-bridge.xxx.workers.dev</code> را چاپ می‌کند — همان را در کادر «آدرس ورکر» بالا بچسبان. اگر نچاپید، آدرس را از داشبورد (Workers &amp; Pages ← cf-bridge) بردار.</p>
+        <p class="hint" data-i18n-html="bm.cmd.hint">کل دستور انگلیسی است و آخرش خط <code>Bridge URL: https://cf-bridge.xxx.workers.dev</code> را چاپ می‌کند — همان را در کادر «آدرس ورکر» بالا بچسبان. اگر نچاپید، آدرس را از داشبورد (Workers &amp; Pages ← cf-bridge) بردار.</p>
       </div>
     </details>
 
     <details class="adv">
-      <summary>پل چطور کار می‌کند؟ (شفاف و کم‌حجم)</summary>
-      <p class="hint">پل فقط دو کار می‌کند: هدرهای CORS را اضافه می‌کند و درخواست را به کلادفلر می‌فرستد. توکن از داخلش عبور می‌کند ولی ذخیره نمی‌شود — کد کاملش:</p>
-      <div class="row"><textarea id="bCode" dir="ltr" rows="10" readonly></textarea><button class="btn btn-sm" onclick="UI.copy('bCode')">کپی کد پل</button></div>
+      <summary data-i18n="bm.how.sum">پل چطور کار می‌کند؟ (شفاف و کم‌حجم)</summary>
+      <p class="hint" data-i18n="bm.how.hint">پل فقط دو کار می‌کند: هدرهای CORS را اضافه می‌کند و درخواست را به کلادفلر می‌فرستد. توکن از داخلش عبور می‌کند ولی ذخیره نمی‌شود — کد کاملش:</p>
+      <div class="row"><textarea id="bCode" dir="ltr" rows="10" readonly></textarea><button class="btn btn-sm" onclick="UI.copy('bCode')" data-i18n="bm.copycode">کپی کد پل</button></div>
     </details>
   </div>
 </div>

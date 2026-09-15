@@ -71,6 +71,48 @@ body {
 .chip-on { background: #d1fae5; color: #065f46; border-color: transparent; }
 .chip-off { background: rgba(255,255,255,.12); }
 
+/* ── کلید تغییر زبان 🌐 (فا / EN) ── */
+.topctl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.langswitch {
+  direction: ltr; display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid rgba(255,255,255,.45); background: rgba(255,255,255,.12);
+  border-radius: 99px; padding: 3px 6px 3px 4px; cursor: pointer; font: inherit;
+  transition: background .2s, transform .1s;
+}
+.langswitch:active { transform: scale(.96); }
+.ls-globe { font-size: 15px; line-height: 1; }
+.ls-track {
+  position: relative; display: inline-flex; align-items: stretch;
+  background: rgba(0,0,0,.22); border-radius: 99px; padding: 2px;
+}
+.ls-knob {
+  position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 2px);
+  background: #fff; border-radius: 99px; box-shadow: 0 1px 5px rgba(0,0,0,.3);
+  transition: transform .28s cubic-bezier(.34,1.56,.64,1);
+}
+.langswitch[data-lang="en"] .ls-knob { transform: translateX(100%); }
+.ls-opt {
+  position: relative; z-index: 1; width: 42px; text-align: center;
+  font-size: 12px; font-weight: 800; padding: 3px 0; color: rgba(255,255,255,.9);
+  transition: color .2s; user-select: none;
+}
+.langswitch[data-lang="fa"] .ls-fa, .langswitch[data-lang="en"] .ls-en { color: var(--brand); }
+
+/* انیمیشن لطیف هنگام تعویض زبان */
+.langfade { animation: langfade .4s ease; }
+@keyframes langfade { from { opacity: .4; } }
+
+/* فونت انگلیسی (Inter) وقتی زبان EN است */
+html[lang="en"] body { font-family: "Inter", "Vazirmatn", "Segoe UI", Tahoma, sans-serif; letter-spacing: .1px; }
+html[lang="en"] .topbar h1 { font-size: 16px; }
+
+/* برجسته‌سازی کشیدن فایل روی کادر (drag & drop) */
+textarea.dragover {
+  border-color: var(--brand-2); border-style: dashed;
+  box-shadow: 0 0 0 4px rgba(31, 196, 146, .22);
+  background: var(--brand-soft);
+}
+
 /* ── کارت ── */
 .card {
   background: var(--card);
